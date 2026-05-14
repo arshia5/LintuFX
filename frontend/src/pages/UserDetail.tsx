@@ -2,400 +2,23 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, FileSpreadsheet, Wallet, ShoppingCart, BookOpen, TrendingUp, TrendingDown, Minus } from 'lucide-react'
-import ExcelJS from 'exceljs'
-import { getUser, listWallets, listOrders, listJournalEntries, listCurrencies } from '../api'
+import { getUser, listWallets, listOrders, listJournalEntries, listCurrencies, downloadClientStatement } from '../api'
 import { Card, Button, Table, Badge, VoidBadge, Modal, Input, Alert } from '../components/ui'
 import type { OrderRead, JournalEntryRead, WalletRead, CurrencyRead } from '../types'
-import { fmtDate, fmtDateTimeShort, fmtReportDateTime } from '../utils/date'
+import { fmtDate, fmtDateTimeShort } from '../utils/date'
 
 function fmtAmt(s: string | number, decimals = 4) {
   const n = typeof s === 'string' ? parseFloat(s) : s
   return isNaN(n) ? String(s) : new Intl.NumberFormat('en-US', { maximumFractionDigits: decimals }).format(n)
 }
 
-function numFmt(n: number, decimals = 2): string {
-  return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-}
-
-// ── Theme colours ─────────────────────────────────────────────────────────────
-const C = {
-  darkBg:   '1E3A5F',   // deep navy — title / section headers
-  midBg:    '2D5F8F',   // medium blue — column headers
-  accent:   '4A90D9',   // sky blue — labels
-  lightBg:  'EBF3FB',   // pale blue — alternating rows
-  white:    'FFFFFF',
-  black:    '1A1A2E',
-  green:    '1A7A3C',
-  greenBg:  'E8F5E9',
-  red:      'B71C1C',
-  redBg:    'FFEBEE',
-  gray:     '6B7280',
-  border:   'BDD7EE',
-}
-
-type ExcelFont = { bold?: boolean; size?: number; color?: { argb: string }; name?: string }
-type ExcelFill = { type: 'pattern'; pattern: 'solid'; fgColor: { argb: string } }
-type ExcelBorder = { style: 'thin' | 'medium' | 'thick'; color?: { argb: string } }
-type ExcelAlignment = { horizontal?: 'left'|'center'|'right'; vertical?: 'middle'; wrapText?: boolean }
-type CellStyle = { font?: ExcelFont; fill?: ExcelFill; border?: Partial<{ top: ExcelBorder; bottom: ExcelBorder; left: ExcelBorder; right: ExcelBorder }>; alignment?: ExcelAlignment; numFmt?: string }
-
-function styleCell(cell: ExcelJS.Cell, s: CellStyle) {
-  if (s.font)      cell.font      = s.font as ExcelJS.Font
-  if (s.fill)      cell.fill      = s.fill as ExcelJS.Fill
-  if (s.border)    cell.border    = s.border as ExcelJS.Borders
-  if (s.alignment) cell.alignment = s.alignment as ExcelJS.Alignment
-  if (s.numFmt)    cell.numFmt    = s.numFmt
-}
-
-function solidFill(hex: string): ExcelFill {
-  return { type: 'pattern', pattern: 'solid', fgColor: { argb: hex } }
-}
-function allBorders(color = C.border): CellStyle['border'] {
-  const b: ExcelBorder = { style: 'thin', color: { argb: color } }
-  return { top: b, bottom: b, left: b, right: b }
-}
-
-// ── Excel report generator ────────────────────────────────────────────────────
-async function generateExcel(opts: {
-  user: { name: string; surname: string | null; username: string; role: string }
-  wallets: WalletRead[]
-  currencies: CurrencyRead[]
-  orders: OrderRead[]
-  journals: JournalEntryRead[]
-  userWalletIds: Set<number>
-  fromDate: string   // YYYY-MM-DD
-  toDate: string     // YYYY-MM-DD
-}) {
-  const { user, wallets, currencies, orders, journals, userWalletIds, fromDate, toDate } = opts
-
-  const currMap: Record<string, CurrencyRead> = {}
-  currencies.forEach(c => { currMap[c.ticker] = c })
-
-  const fullName = `${user.name}${user.surname ? ' ' + user.surname : ''}`
-  const periodLabel = `${fromDate.split('-').reverse().join('/')} — ${toDate.split('-').reverse().join('/')}`
-  const generatedAt = fmtReportDateTime(new Date().toISOString())
-
-  // ── Build combined transaction rows ────────────────────────────────────────
-  type TxRow = {
-    date: string          // ISO for sorting
-    dateLabel: string     // formatted
-    category: string      // "FX Order" | "Transfer"
-    type: string          // BUY/SELL or Sent/Received
-    description: string
-    sent: string          // e.g. "1,080.00 USD"
-    received: string      // e.g. "1,000.00 EUR"
-    note: string
-    status: string
-    voided: boolean
-  }
-
-  const txRows: TxRow[] = []
-
-  orders.forEach(o => {
-    const inAmt  = numFmt(parseFloat(o.amount_in), 2)
-    const outAmt = numFmt(parseFloat(o.amount_out), 2)
-    const inCurr  = currMap[o.currency_in_id]?.name  ?? o.currency_in_id
-    const outCurr = currMap[o.currency_out_id]?.name ?? o.currency_out_id
-    const rate = parseFloat(o.exchange_rate).toFixed(4)
-
-    txRows.push({
-      date: o.created_at,
-      dateLabel: fmtReportDateTime(o.created_at),
-      category: 'FX Order',
-      type: o.order_type,
-      description: `${inCurr} → ${outCurr} @ ${rate}`,
-      sent:     `${inAmt} ${o.currency_in_id}`,
-      received: `${outAmt} ${o.currency_out_id}`,
-      note: o.description ?? '',
-      status: o.voided_at ? 'Voided' : 'Active',
-      voided: !!o.voided_at,
-    })
-  })
-
-  journals.forEach(j => {
-    const isOut = userWalletIds.has(j.from_wallet_id)
-    const amt = numFmt(parseFloat(j.amount), 2)
-    const c = currMap[j.currency_id]
-    const currLabel = c?.name ?? j.currency_id
-
-    txRows.push({
-      date: j.created_at,
-      dateLabel: fmtReportDateTime(j.created_at),
-      category: 'Transfer',
-      type: isOut ? 'Sent' : 'Received',
-      description: `${currLabel} transfer`,
-      sent:     isOut ? `${amt} ${j.currency_id}` : '',
-      received: isOut ? '' : `${amt} ${j.currency_id}`,
-      note: j.description ?? '',
-      status: j.voided_at ? 'Voided' : 'Active',
-      voided: !!j.voided_at,
-    })
-  })
-
-  // Sort by date ascending
-  txRows.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
-
-  // ── Build workbook ────────────────────────────────────────────────────────
-  const wb = new ExcelJS.Workbook()
-  wb.creator = 'FX Ledger'
-  wb.created = new Date()
-
-  const ws = wb.addWorksheet('Client Statement', {
-    pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
-    views: [{ showGridLines: false }],
-  })
-
-  // Column widths
-  ws.columns = [
-    { width: 2  },  // A — left margin
-    { width: 20 },  // B — date
-    { width: 12 },  // C — category
-    { width: 10 },  // D — type
-    { width: 28 },  // E — description
-    { width: 22 },  // F — sent
-    { width: 22 },  // G — received
-    { width: 32 },  // H — note
-    { width: 10 },  // I — status
-    { width: 2  },  // J — right margin
-  ]
-
-  let row = 1
-
-  // ── Title block ──────────────────────────────────────────────────────────
-  // Row 1: tall title row
-  ws.mergeCells(`B${row}:I${row}`)
-  const titleCell = ws.getCell(`B${row}`)
-  titleCell.value = 'CLIENT STATEMENT'
-  styleCell(titleCell, {
-    font: { bold: true, size: 18, color: { argb: C.white }, name: 'Calibri' },
-    fill: solidFill(C.darkBg),
-    alignment: { horizontal: 'center', vertical: 'middle' },
-  })
-  ws.getRow(row).height = 38
-  row++
-
-  // Row 2: client name sub-header
-  ws.mergeCells(`B${row}:I${row}`)
-  const nameCell = ws.getCell(`B${row}`)
-  nameCell.value = fullName
-  styleCell(nameCell, {
-    font: { bold: true, size: 13, color: { argb: C.white }, name: 'Calibri' },
-    fill: solidFill(C.darkBg),
-    alignment: { horizontal: 'center', vertical: 'middle' },
-  })
-  ws.getRow(row).height = 24
-  row++
-
-  // Spacer
-  ws.getRow(row).height = 6
-  row++
-
-  // ── Meta info block ──────────────────────────────────────────────────────
-  const metaRows: [string, string][] = [
-    ['Report Period', periodLabel],
-    ['Generated',     generatedAt],
-  ]
-  for (const [label, value] of metaRows) {
-    ws.getCell(`B${row}`).value = label
-    styleCell(ws.getCell(`B${row}`), {
-      font: { bold: true, size: 10, color: { argb: C.gray }, name: 'Calibri' },
-      alignment: { horizontal: 'left', vertical: 'middle' },
-    })
-    ws.mergeCells(`C${row}:I${row}`)
-    ws.getCell(`C${row}`).value = value
-    styleCell(ws.getCell(`C${row}`), {
-      font: { size: 10, color: { argb: C.black }, name: 'Calibri' },
-      alignment: { horizontal: 'left', vertical: 'middle' },
-    })
-    ws.getRow(row).height = 18
-    row++
-  }
-
-  row++ // spacer
-
-  // ── Wallet Balances section ───────────────────────────────────────────────
-  ws.mergeCells(`B${row}:I${row}`)
-  const balHeader = ws.getCell(`B${row}`)
-  balHeader.value = 'WALLET BALANCES'
-  styleCell(balHeader, {
-    font: { bold: true, size: 11, color: { argb: C.white }, name: 'Calibri' },
-    fill: solidFill(C.midBg),
-    alignment: { horizontal: 'left', vertical: 'middle' },
-    border: allBorders(C.midBg),
-  })
-  ws.getRow(row).height = 22
-  row++
-
-  // Column headers for balances
-  const balColHeaders = ['Currency', 'Balance']
-  const balCols = ['B', 'C']
-  balColHeaders.forEach((h, i) => {
-    const cell = ws.getCell(`${balCols[i]}${row}`)
-    cell.value = h
-    styleCell(cell, {
-      font: { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' },
-      fill: solidFill(C.accent),
-      border: allBorders(),
-      alignment: { horizontal: i === 1 ? 'right' : 'left', vertical: 'middle' },
-    })
-  })
-  ws.getRow(row).height = 18
-  row++
-
-  if (wallets.length === 0) {
-    ws.mergeCells(`B${row}:C${row}`)
-    ws.getCell(`B${row}`).value = 'No wallets'
-    styleCell(ws.getCell(`B${row}`), { font: { size: 10, color: { argb: C.gray }, name: 'Calibri' } })
-    row++
-  } else {
-    wallets.forEach((w, idx) => {
-      const c = currMap[w.currency_id]
-      const isAlt = idx % 2 === 1
-      const currCell = ws.getCell(`B${row}`)
-      const balCell  = ws.getCell(`C${row}`)
-      currCell.value = c?.name ?? w.currency_id
-      balCell.value  = parseFloat(w.balance)
-      ;[currCell, balCell].forEach((cell, ci) => {
-        styleCell(cell, {
-          font: { size: 10, color: { argb: C.black }, name: 'Calibri' },
-          fill: solidFill(isAlt ? C.lightBg : C.white),
-          border: allBorders(),
-          alignment: { horizontal: ci === 1 ? 'right' : 'left', vertical: 'middle' },
-          numFmt: ci === 1 ? '#,##0.00' : undefined,
-        })
-      })
-      ws.getRow(row).height = 18
-      row++
-    })
-  }
-
-  row++ // spacer
-
-  // ── Transaction History section ───────────────────────────────────────────
-  ws.mergeCells(`B${row}:I${row}`)
-  const txHeader = ws.getCell(`B${row}`)
-  txHeader.value = `TRANSACTION HISTORY  (${txRows.length} transactions)`
-  styleCell(txHeader, {
-    font: { bold: true, size: 11, color: { argb: C.white }, name: 'Calibri' },
-    fill: solidFill(C.midBg),
-    alignment: { horizontal: 'left', vertical: 'middle' },
-    border: allBorders(C.midBg),
-  })
-  ws.getRow(row).height = 22
-  row++
-
-  // Column headers for transactions
-  const txColDefs: { label: string; col: string; align: ExcelAlignment['horizontal'] }[] = [
-    { label: 'Date & Time',  col: 'B', align: 'left'   },
-    { label: 'Category',     col: 'C', align: 'center' },
-    { label: 'Type',         col: 'D', align: 'center' },
-    { label: 'Description',  col: 'E', align: 'left'   },
-    { label: 'Sent (Debit)', col: 'F', align: 'right'  },
-    { label: 'Received (Credit)', col: 'G', align: 'right' },
-    { label: 'Note',         col: 'H', align: 'left'   },
-    { label: 'Status',       col: 'I', align: 'center' },
-  ]
-  txColDefs.forEach(({ label, col, align }) => {
-    const cell = ws.getCell(`${col}${row}`)
-    cell.value = label
-    styleCell(cell, {
-      font: { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' },
-      fill: solidFill(C.darkBg),
-      border: allBorders(C.darkBg),
-      alignment: { horizontal: align, vertical: 'middle' },
-    })
-  })
-  ws.getRow(row).height = 20
-  row++
-
-  if (txRows.length === 0) {
-    ws.mergeCells(`B${row}:I${row}`)
-    ws.getCell(`B${row}`).value = 'No transactions in this period'
-    styleCell(ws.getCell(`B${row}`), {
-      font: { size: 10, color: { argb: C.gray }, name: 'Calibri' },
-      alignment: { horizontal: 'center', vertical: 'middle' },
-    })
-    ws.getRow(row).height = 20
-    row++
-  } else {
-    txRows.forEach((tx, idx) => {
-      const isAlt = idx % 2 === 1
-      const baseFill = tx.voided ? solidFill('FFF3F3') : solidFill(isAlt ? C.lightBg : C.white)
-
-      const vals: Record<string, string | number> = {
-        B: tx.dateLabel,
-        C: tx.category,
-        D: tx.type,
-        E: tx.description,
-        F: tx.sent,
-        G: tx.received,
-        H: tx.note,
-        I: tx.status,
-      }
-
-      for (const [col, val] of Object.entries(vals)) {
-        const cell = ws.getCell(`${col}${row}`)
-        cell.value = val
-
-        const isRight = col === 'F' || col === 'G'
-        const isCentre = col === 'C' || col === 'D' || col === 'I'
-        const isVoidedStatus = col === 'I' && tx.voided
-
-        styleCell(cell, {
-          font: {
-            size: 9,
-            color: { argb: isVoidedStatus ? C.red : tx.voided ? C.gray : col === 'F' && tx.sent ? C.red : col === 'G' && tx.received ? C.green : C.black },
-            bold: col === 'F' || col === 'G',
-            name: 'Calibri',
-          },
-          fill: baseFill,
-          border: allBorders(),
-          alignment: {
-            horizontal: isRight ? 'right' : isCentre ? 'center' : 'left',
-            vertical: 'middle',
-            wrapText: col === 'H',
-          },
-        })
-      }
-
-      ws.getRow(row).height = 18
-      row++
-    })
-  }
-
-  // ── Footer ─────────────────────────────────────────────────────────────────
-  row++
-  ws.mergeCells(`B${row}:I${row}`)
-  const footer = ws.getCell(`B${row}`)
-  footer.value = `This statement was generated on ${generatedAt} and reflects all transactions recorded in the system for the selected period.`
-  styleCell(footer, {
-    font: { size: 8, color: { argb: C.gray }, name: 'Calibri' },
-    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
-  })
-  ws.getRow(row).height = 28
-
-  // ── Write file ──────────────────────────────────────────────────────────────
-  const buffer = await wb.xlsx.writeBuffer()
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  const safeFilename = fullName.replace(/[^a-zA-Z0-9]/g, '_')
-  a.href = url
-  a.download = `${safeFilename}_statement_${fromDate}_to_${toDate}.xlsx`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 // ── Export Modal ──────────────────────────────────────────────────────────────
-function ExportModal({ open, onClose, user, wallets, currencies, orders, journals, userWalletIds }: {
+function ExportModal({ open, onClose, userId, orders, journals }: {
   open: boolean
   onClose: () => void
-  user: { name: string; surname: string | null; username: string; role: string }
-  wallets: WalletRead[]
-  currencies: CurrencyRead[]
+  userId: number
   orders: OrderRead[]
   journals: JournalEntryRead[]
-  userWalletIds: Set<number>
 }) {
   const today = new Date().toISOString().slice(0, 10)
   const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
@@ -416,16 +39,24 @@ function ExportModal({ open, onClose, user, wallets, currencies, orders, journal
   const handleExport = async () => {
     if (!from || !to) { setErr('Both dates are required'); return }
     if (from > to) { setErr('Start date must be before end date'); return }
+    setErr('')
     setLoading(true)
     try {
-      await generateExcel({
-        user, wallets, currencies, userWalletIds,
-        orders: filteredOrders,
-        journals: filteredJournals,
-        fromDate: from,
-        toDate: to,
+      const response = await downloadClientStatement(userId, { from, to })
+      const disposition = response.headers['content-disposition'] as string | undefined
+      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? `client_statement_${from}_to_${to}.xlsx`
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
       onClose()
+    } catch {
+      setErr('Could not generate the report. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -799,12 +430,9 @@ export default function UserDetail() {
       <ExportModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
-        user={user}
-        wallets={userWallets}
-        currencies={currencies}
+        userId={userId}
         orders={orders as OrderRead[]}
         journals={userJournals}
-        userWalletIds={userWalletIds}
       />
     </div>
   )

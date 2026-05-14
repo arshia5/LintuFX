@@ -1,8 +1,10 @@
 from decimal import Decimal
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from io import BytesIO
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -55,6 +57,7 @@ from .schemas import (
 from .auth import require_house_user
 from .config import get_settings
 from .security import create_access_token, hash_password, verify_password
+from .report_exports import build_client_statement_xlsx, date_key
 from .services import (
     HouseExchangeEffect,
     JournalEffect,
@@ -1251,4 +1254,68 @@ def client_debts_report(
         currency_id=currency_id,
         include_zero=False,
         db=db,
+    )
+
+
+@router.get("/reports/client-statements/{user_id}.xlsx", tags=["reports"])
+def client_statement_export(
+    user_id: int,
+    from_date: date = Query(alias="from"),
+    to_date: date = Query(alias="to"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Start date must be before end date",
+        )
+
+    user = get_user_or_404(db, user_id)
+    wallets = list(
+        db.scalars(
+            select(Wallet)
+            .where(Wallet.user_id == user_id)
+            .order_by(Wallet.user_id, Wallet.currency_id)
+        ).all()
+    )
+    wallet_ids = {wallet.id for wallet in wallets}
+    orders = [
+        order
+        for order in db.scalars(
+            select(Order).where(Order.client_id == user_id).order_by(Order.id.desc())
+        ).all()
+        if from_date.isoformat() <= date_key(order.created_at) <= to_date.isoformat()
+    ]
+
+    if wallet_ids:
+        journals = [
+            entry
+            for entry in db.scalars(
+                select(JournalEntry)
+                .where(
+                    (JournalEntry.from_wallet_id.in_(wallet_ids))
+                    | (JournalEntry.to_wallet_id.in_(wallet_ids))
+                )
+                .order_by(JournalEntry.id.desc())
+            ).all()
+            if from_date.isoformat() <= date_key(entry.created_at) <= to_date.isoformat()
+        ]
+    else:
+        journals = []
+
+    currencies = list(db.scalars(select(Currency).order_by(Currency.ticker)).all())
+    content, filename = build_client_statement_xlsx(
+        user=user,
+        wallets=wallets,
+        currencies=currencies,
+        orders=orders,
+        journals=journals,
+        user_wallet_ids=wallet_ids,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

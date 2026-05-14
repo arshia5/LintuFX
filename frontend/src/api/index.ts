@@ -128,3 +128,12 @@ export const getClientBalances = (params?: { direction?: string; client_id?: num
 
 export const getClientDebts = (params?: { client_id?: number; currency_id?: string }) =>
   apiClient.get('/reports/client-debts', { params }).then(r => r.data)
+
+export const downloadClientStatement = (
+  userId: number,
+  params: { from: string; to: string },
+) =>
+  apiClient.get(`/reports/client-statements/${userId}.xlsx`, {
+    params,
+    responseType: 'blob',
+  })

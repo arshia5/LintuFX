@@ -29,6 +29,7 @@ if cors_allowed_origins or cors_allowed_origin_regex:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
     )
 
 

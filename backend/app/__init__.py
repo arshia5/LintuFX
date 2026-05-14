@@ -1,0 +1,2 @@
+"""FX ledger FastAPI application."""
+

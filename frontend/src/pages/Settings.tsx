@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
-import { PageHeader, Card, Button, Input, Alert } from '../components/ui'
-import { Palette, Type, Layout, Save } from 'lucide-react'
+import { PageHeader, Card, Button, Input, Alert, ConfirmDialog } from '../components/ui'
+import { Palette, Type, Layout, Save, FileSpreadsheet, Trash2 } from 'lucide-react'
+import { downloadFullActivityReport, freshStart } from '../api'
+import { saveBlobResponse } from '../utils/download'
 
 const presetThemes = [
   { name: 'Ocean Blue', primary: '#1a6ee8', accent: '#0f9d58', sidebar: '#1e2640' },
@@ -30,6 +32,10 @@ const radiusOptions = [
 export default function Settings() {
   const { theme, setTheme } = useTheme()
   const [saved, setSaved] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveLoading, setArchiveLoading] = useState(false)
+  const [archiveSuccess, setArchiveSuccess] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
 
   const handleSave = () => {
     setSaved(true)
@@ -40,6 +46,23 @@ export default function Settings() {
     setTheme({ primaryColor: preset.primary, accentColor: preset.accent, sidebarColor: preset.sidebar })
   }
 
+  const handleArchiveAndClean = async () => {
+    setArchiveLoading(true)
+    setArchiveError('')
+    setArchiveSuccess(false)
+    try {
+      const response = await downloadFullActivityReport()
+      saveBlobResponse(response, 'full_activity_report_all_time.xlsx')
+      await freshStart()
+      setArchiveOpen(false)
+      setArchiveSuccess(true)
+    } catch {
+      setArchiveError('Could not create the full report and clean the database. No cleanup was completed if report generation failed.')
+    } finally {
+      setArchiveLoading(false)
+    }
+  }
+
   return (
     <div>
       <PageHeader title="Settings" subtitle="Customize the look and feel of your FX Ledger" />
@@ -47,6 +70,16 @@ export default function Settings() {
       {saved && (
         <div className="mb-4">
           <Alert type="success" message="Settings saved successfully!" onClose={() => setSaved(false)} />
+        </div>
+      )}
+      {archiveSuccess && (
+        <div className="mb-4">
+          <Alert type="success" message="Full report downloaded and database cleaned. House users were preserved." onClose={() => setArchiveSuccess(false)} />
+        </div>
+      )}
+      {archiveError && (
+        <div className="mb-4">
+          <Alert type="error" message={archiveError} onClose={() => setArchiveError('')} />
         </div>
       )}
 
@@ -259,8 +292,41 @@ export default function Settings() {
           <Button className="w-full justify-center" icon={<Save size={16} />} onClick={handleSave}>
             Save Settings
           </Button>
+
+          <Card className="p-6 border-red-100 bg-red-50/40">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-100 rounded-lg text-red-600">
+                <Trash2 size={16} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-sm font-semibold text-red-900">Archive & Fresh Start</h2>
+                <p className="text-xs text-red-700 mt-1">
+                  Downloads an all-time Excel timeline of orders and transfers, then clears database records while preserving house users.
+                </p>
+                <Button
+                  className="w-full justify-center mt-4"
+                  variant="danger"
+                  icon={<FileSpreadsheet size={16} />}
+                  onClick={() => setArchiveOpen(true)}
+                >
+                  Export Full Report & Clean Data
+                </Button>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={handleArchiveAndClean}
+        title="Export and Clean Database"
+        message="This will first download a full all-time Excel report, then permanently delete all ledger data, clients, wallets, currencies, and audit logs. House users will be kept."
+        confirmLabel="Export & Clean"
+        variant="danger"
+        loading={archiveLoading}
+      />
     </div>
   )
 }

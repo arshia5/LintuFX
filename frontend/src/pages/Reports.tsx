@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getClientBalances, getClientDebts, listUsers, listCurrencies } from '../api'
-import { PageHeader, Card, Table, Badge, SearchableSelect, Select } from '../components/ui'
+import { FileSpreadsheet } from 'lucide-react'
+import { getClientBalances, getClientDebts, listUsers, listCurrencies, downloadFullActivityReport } from '../api'
+import { PageHeader, Card, Table, Badge, SearchableSelect, Select, Input, Button, Alert } from '../components/ui'
 import type { ClientBalanceReport, UserRead, CurrencyRead } from '../types'
+import { saveBlobResponse } from '../utils/download'
 
 function fmtAmt(s: string) {
   const n = parseFloat(s)
@@ -26,6 +28,13 @@ export default function Reports() {
   const [clientId, setClientId] = useState<number | null>(null)
   const [currencyId, setCurrencyId] = useState<string | null>(null)
   const [includeZero, setIncludeZero] = useState(false)
+  const today = new Date().toISOString().slice(0, 10)
+  const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+  const [activityAllTime, setActivityAllTime] = useState(true)
+  const [activityFrom, setActivityFrom] = useState(monthAgo)
+  const [activityTo, setActivityTo] = useState(today)
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState('')
 
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => listUsers() })
   const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => listCurrencies() })
@@ -65,6 +74,34 @@ export default function Reports() {
 
   const data: ClientBalanceReport[] = tab === 'balances' ? (balancesQuery.data ?? []) : (debtsQuery.data ?? [])
   const isLoading = tab === 'balances' ? balancesQuery.isLoading : debtsQuery.isLoading
+
+  const handleActivityExport = async () => {
+    if (!activityAllTime && (!activityFrom || !activityTo)) {
+      setActivityError('Both dates are required')
+      return
+    }
+    if (!activityAllTime && activityFrom > activityTo) {
+      setActivityError('Start date must be before end date')
+      return
+    }
+    setActivityError('')
+    setActivityLoading(true)
+    try {
+      const response = await downloadFullActivityReport(
+        activityAllTime ? undefined : { from: activityFrom, to: activityTo }
+      )
+      saveBlobResponse(
+        response,
+        activityAllTime
+          ? 'full_activity_report_all_time.xlsx'
+          : `full_activity_report_${activityFrom}_to_${activityTo}.xlsx`
+      )
+    } catch {
+      setActivityError('Could not generate the full activity report. Please try again.')
+    } finally {
+      setActivityLoading(false)
+    }
+  }
 
   // Summary stats
   const owesHouse = data.filter(r => r.position === 'client_owes_house')
@@ -109,6 +146,48 @@ export default function Reports() {
   return (
     <div>
       <PageHeader title="Reports" subtitle="Client balance and debt positions" />
+
+      <Card className="p-5 mb-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">Full Activity Export</h2>
+            <p className="text-xs text-gray-500 mt-1">Download an Excel timeline of all FX orders, house exchanges, and transfers, including voided records.</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex items-center gap-2 text-sm text-gray-700 pb-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={activityAllTime}
+                onChange={e => setActivityAllTime(e.target.checked)}
+                className="rounded"
+              />
+              All time
+            </label>
+            <Input
+              label="From"
+              type="date"
+              value={activityFrom}
+              disabled={activityAllTime}
+              onChange={e => setActivityFrom(e.target.value)}
+            />
+            <Input
+              label="To"
+              type="date"
+              value={activityTo}
+              disabled={activityAllTime}
+              onChange={e => setActivityTo(e.target.value)}
+            />
+            <Button
+              icon={<FileSpreadsheet size={15} />}
+              onClick={handleActivityExport}
+              loading={activityLoading}
+            >
+              Download Excel
+            </Button>
+          </div>
+        </div>
+        {activityError && <div className="mt-4"><Alert type="error" message={activityError} /></div>}
+      </Card>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">

@@ -6,6 +6,7 @@ import { getUser, listWallets, listOrders, listJournalEntries, listCurrencies, d
 import { Card, Button, Table, Badge, VoidBadge, Modal, Input, Alert } from '../components/ui'
 import type { OrderRead, JournalEntryRead, WalletRead, CurrencyRead } from '../types'
 import { fmtDate, fmtDateTimeShort } from '../utils/date'
+import { saveBlobResponse } from '../utils/download'
 
 function fmtAmt(s: string | number, decimals = 4) {
   const n = typeof s === 'string' ? parseFloat(s) : s
@@ -28,11 +29,11 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
   const [loading, setLoading] = useState(false)
 
   const filteredOrders = useMemo(() =>
-    orders.filter(o => o.created_at.slice(0, 10) >= from && o.created_at.slice(0, 10) <= to),
+    orders.filter(o => !o.voided_at && o.created_at.slice(0, 10) >= from && o.created_at.slice(0, 10) <= to),
     [orders, from, to]
   )
   const filteredJournals = useMemo(() =>
-    journals.filter(j => j.created_at.slice(0, 10) >= from && j.created_at.slice(0, 10) <= to),
+    journals.filter(j => !j.voided_at && j.created_at.slice(0, 10) >= from && j.created_at.slice(0, 10) <= to),
     [journals, from, to]
   )
 
@@ -43,17 +44,7 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
     setLoading(true)
     try {
       const response = await downloadClientStatement(userId, { from, to })
-      const disposition = response.headers['content-disposition'] as string | undefined
-      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? `client_statement_${from}_to_${to}.xlsx`
-      const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
+      saveBlobResponse(response, `client_statement_${from}_to_${to}.xlsx`)
       onClose()
     } catch {
       setErr('Could not generate the report. Please try again.')

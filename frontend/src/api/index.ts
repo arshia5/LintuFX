@@ -137,3 +137,12 @@ export const downloadClientStatement = (
     params,
     responseType: 'blob',
   })
+
+export const downloadFullActivityReport = (params?: { from?: string; to?: string }) =>
+  apiClient.get('/reports/full-activity.xlsx', {
+    params,
+    responseType: 'blob',
+  })
+
+export const freshStart = () =>
+  apiClient.post('/admin/fresh-start', { confirm: 'FRESH_START' }).then(r => r.data)

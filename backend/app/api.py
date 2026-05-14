@@ -57,7 +57,7 @@ from .schemas import (
 from .auth import require_house_user
 from .config import get_settings
 from .security import create_access_token, hash_password, verify_password
-from .report_exports import build_client_statement_xlsx, date_key
+from .report_exports import build_client_statement_xlsx, build_full_activity_report_xlsx, date_key
 from .services import (
     HouseExchangeEffect,
     JournalEffect,
@@ -1284,7 +1284,8 @@ def client_statement_export(
         for order in db.scalars(
             select(Order).where(Order.client_id == user_id).order_by(Order.id.desc())
         ).all()
-        if from_date.isoformat() <= date_key(order.created_at) <= to_date.isoformat()
+        if order.voided_at is None
+        and from_date.isoformat() <= date_key(order.created_at) <= to_date.isoformat()
     ]
 
     if wallet_ids:
@@ -1298,7 +1299,8 @@ def client_statement_export(
                 )
                 .order_by(JournalEntry.id.desc())
             ).all()
-            if from_date.isoformat() <= date_key(entry.created_at) <= to_date.isoformat()
+            if entry.voided_at is None
+            and from_date.isoformat() <= date_key(entry.created_at) <= to_date.isoformat()
         ]
     else:
         journals = []
@@ -1311,6 +1313,68 @@ def client_statement_export(
         orders=orders,
         journals=journals,
         user_wallet_ids=wallet_ids,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def in_report_period(value: datetime, from_date: date | None, to_date: date | None) -> bool:
+    key = date_key(value)
+    if from_date is not None and key < from_date.isoformat():
+        return False
+    if to_date is not None and key > to_date.isoformat():
+        return False
+    return True
+
+
+@router.get("/reports/full-activity.xlsx", tags=["reports"])
+def full_activity_export(
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Start date must be before end date",
+        )
+
+    users = list(db.scalars(select(User).order_by(User.id)).all())
+    currencies = list(db.scalars(select(Currency).order_by(Currency.ticker)).all())
+    wallets = list(db.scalars(select(Wallet).order_by(Wallet.user_id, Wallet.currency_id)).all())
+    orders = [
+        order
+        for order in db.scalars(select(Order).order_by(Order.id.desc())).all()
+        if in_report_period(order.created_at, from_date, to_date)
+    ]
+    house_exchanges = [
+        exchange
+        for exchange in db.scalars(select(HouseExchange).order_by(HouseExchange.id.desc())).all()
+        if in_report_period(exchange.created_at, from_date, to_date)
+    ]
+    journals = [
+        entry
+        for entry in db.scalars(select(JournalEntry).order_by(JournalEntry.id.desc())).all()
+        if in_report_period(entry.created_at, from_date, to_date)
+    ]
+    wallet_adjustments = [
+        adjustment
+        for adjustment in db.scalars(select(WalletAdjustment).order_by(WalletAdjustment.id.desc())).all()
+        if in_report_period(adjustment.created_at, from_date, to_date)
+    ]
+    content, filename = build_full_activity_report_xlsx(
+        users=users,
+        currencies=currencies,
+        wallets=wallets,
+        orders=orders,
+        house_exchanges=house_exchanges,
+        journals=journals,
+        wallet_adjustments=wallet_adjustments,
         from_date=from_date,
         to_date=to_date,
     )

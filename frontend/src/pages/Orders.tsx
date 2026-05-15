@@ -7,13 +7,14 @@ import {
   Alert, ConfirmDialog, Card, Badge, SearchableSelect, VoidBadge,
   FilterBar, initFilters,
 } from '../components/ui'
+import { RateCalculator } from '../components/ui/RateCalculator'
 import type { FilterDef, FilterValues } from '../components/ui'
 import type { OrderRead, UserRead, CurrencyRead, OrderCreate, OrderType } from '../types'
 import { fmtDateTimeShort, nowIstanbulISO, istanbulLocalToUTC } from '../utils/date'
+import { formatNumber } from '../utils/number'
 
 function fmtAmt(s: string) {
-  const n = parseFloat(s)
-  return isNaN(n) ? s : new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }).format(n)
+  return formatNumber(s, 4)
 }
 const fmtDate = fmtDateTimeShort
 
@@ -120,7 +121,7 @@ export default function Orders() {
       render: (r: OrderRead) => <span className="text-sm">{fmtAmt(r.amount_in)} → {fmtAmt(r.amount_out)}</span>,
       sortValue: (r: OrderRead) => parseFloat(r.amount_in),
     },
-    { key: 'exchange_rate', header: 'Rate', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-600">{r.exchange_rate}</span>, sortValue: (r: OrderRead) => parseFloat(r.exchange_rate) },
+    { key: 'exchange_rate', header: 'Rate', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-600">{formatNumber(r.exchange_rate, 8)}</span>, sortValue: (r: OrderRead) => parseFloat(r.exchange_rate) },
     { key: 'status', header: 'Status', render: (r: OrderRead) => <VoidBadge voidedAt={r.voided_at} />, sortValue: (r: OrderRead) => r.voided_at ?? '' },
     { key: 'created_at', header: 'Date', render: (r: OrderRead) => <span className="text-xs text-gray-400">{fmtDate(r.created_at)}</span>, sortValue: (r: OrderRead) => r.created_at },
     {
@@ -231,7 +232,7 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
   const [err, setErr] = useState('')
 
   const clientOpts = clients.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username}` }))
-  const currOpts = currencies.map(c => ({ value: c.ticker, label: `${c.ticker} — ${c.name}` }))
+  const currOpts = currencies.map(c => ({ value: c.ticker, label: c.name || c.ticker }))
 
   const submit = () => {
     if (!clientId) { setErr('Client is required'); return }
@@ -266,7 +267,14 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
               ))}
             </div>
           </div>
-          <Input label="Exchange Rate *" type="number" step="any" value={rate} onChange={e => setRate(e.target.value)} placeholder="1.2345" />
+          <RateCalculator
+            rate={rate}
+            setRate={setRate}
+            amountIn={amountIn}
+            setAmountIn={setAmountIn}
+            amountOut={amountOut}
+            setAmountOut={setAmountOut}
+          />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SearchableSelect label="Currency In *" options={currOpts} value={currIn} onChange={v => setCurrIn(String(v))} placeholder="Select..." />

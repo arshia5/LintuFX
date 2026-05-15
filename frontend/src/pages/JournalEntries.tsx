@@ -8,10 +8,10 @@ import { VoidModal } from './Orders'
 import type { JournalEntryRead, WalletRead, CurrencyRead, UserRead } from '../types'
 
 import { fmtDateTimeShort, nowIstanbulISO, istanbulLocalToUTC } from '../utils/date'
+import { formatNumber } from '../utils/number'
 
 function fmtAmt(s: string) {
-  const n = parseFloat(s)
-  return isNaN(n) ? s : new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }).format(n)
+  return formatNumber(s, 4)
 }
 const fmtDate = fmtDateTimeShort
 
@@ -251,7 +251,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
 
   const currOpts = (fromUser && toUser ? sharedCurrencies : allCurrencies).map(c => ({
     value: c.ticker,
-    label: `${c.ticker} — ${c.name}`,
+    label: c.name || c.ticker,
   }))
 
   // Resolve wallet IDs from user + currency

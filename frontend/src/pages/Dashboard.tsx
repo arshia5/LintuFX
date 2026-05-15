@@ -13,6 +13,7 @@ import { listOrders, listHouseExchanges, listJournalEntries, listUsers, getClien
 import { PageHeader, StatCard, Card, Badge } from '../components/ui'
 import type { OrderRead, ClientBalanceReport, WalletRead, CurrencyRead } from '../types'
 import { fmtDateLabel } from '../utils/date'
+import { formatNumber } from '../utils/number'
 
 const COLORS = ['#1a6ee8', '#0f9d58', '#f4b400', '#db4437', '#7b1fa2', '#00acc1']
 
@@ -28,9 +29,7 @@ type HoldingsRow = {
 }
 
 function fmtAmt(s: string) {
-  const n = parseFloat(s)
-  if (isNaN(n)) return s
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n)
+  return formatNumber(s, 2)
 }
 
 export default function Dashboard() {
@@ -194,7 +193,8 @@ export default function Dashboard() {
                   const houseRatio  = row.total > 0 ? (row.house   / row.total) * 100 : 0
                   const clientRatio = row.total > 0 ? (row.clients / row.total) * 100 : 0
                   const symbol = row.currency?.symbol ?? ''
-                  const fmt = (n: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+                  const fmt = (n: number) => formatNumber(n, 2, 2)
+                  const money = (n: number) => symbol ? `${symbol} ${fmt(n)}` : fmt(n)
                   return (
                     <tr key={row.ticker} className={`border-b border-gray-50 hover:bg-gray-50 transition ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
                       {/* Currency */}
@@ -203,16 +203,16 @@ export default function Dashboard() {
                       </td>
                       {/* Total */}
                       <td className="px-5 py-3 text-right">
-                        <p className="font-bold text-gray-900 text-base">{symbol}{fmt(row.total)}</p>
+                        <p className="font-bold text-gray-900 text-base">{money(row.total)}</p>
                       </td>
                       {/* House */}
                       <td className="px-5 py-3 text-right hidden md:table-cell">
-                        <p className="text-sm font-medium text-purple-700">{symbol}{fmt(row.house)}</p>
+                        <p className="text-sm font-medium text-purple-700">{money(row.house)}</p>
                         <p className="text-xs text-gray-400">{houseRatio.toFixed(0)}%</p>
                       </td>
                       {/* Clients */}
                       <td className="px-5 py-3 text-right hidden md:table-cell">
-                        <p className="text-sm font-medium text-blue-700">{symbol}{fmt(row.clients)}</p>
+                        <p className="text-sm font-medium text-blue-700">{money(row.clients)}</p>
                         <p className="text-xs text-gray-400">{clientRatio.toFixed(0)}%</p>
                       </td>
                       {/* Distribution bar */}

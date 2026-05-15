@@ -4,13 +4,14 @@ import { Plus, Ban, Edit3, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { listHouseExchanges, createHouseExchange, voidHouseExchange, correctHouseExchange, deleteHouseExchange, listUsers, listCurrencies, listWallets } from '../api'
 import { PageHeader, Button, Table, Modal, Input, Alert, ConfirmDialog, Card, SearchableSelect, VoidBadge, FilterBar, initFilters } from '../components/ui'
 import type { FilterDef, FilterValues } from '../components/ui'
+import { RateCalculator } from '../components/ui/RateCalculator'
 import { VoidModal } from './Orders'
 import type { HouseExchangeRead, UserRead, CurrencyRead, WalletRead } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
+import { formatNumber } from '../utils/number'
 
 function fmtAmt(s: string) {
-  const n = parseFloat(s)
-  return isNaN(n) ? s : new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }).format(n)
+  return formatNumber(s, 4)
 }
 const fmtDate = fmtDateTimeShort
 
@@ -67,7 +68,7 @@ export default function HouseExchanges() {
     { key: 'pair', header: 'From → To', render: (r: HouseExchangeRead) => <span className="font-mono font-semibold text-sm">{r.currency_from_id} → {r.currency_to_id}</span>, sortValue: (r: HouseExchangeRead) => `${r.currency_from_id}/${r.currency_to_id}` },
     { key: 'amount_from', header: 'Amount From', render: (r: HouseExchangeRead) => <span className="text-sm">{fmtAmt(r.amount_from)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.amount_from) },
     { key: 'amount_to', header: 'Amount To', render: (r: HouseExchangeRead) => <span className="text-sm">{fmtAmt(r.amount_to)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.amount_to) },
-    { key: 'exchange_rate', header: 'Rate', render: (r: HouseExchangeRead) => <span className="font-mono text-xs text-gray-600">{r.exchange_rate}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.exchange_rate) },
+    { key: 'exchange_rate', header: 'Rate', render: (r: HouseExchangeRead) => <span className="font-mono text-xs text-gray-600">{formatNumber(r.exchange_rate, 8)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.exchange_rate) },
     { key: 'status', header: 'Status', render: (r: HouseExchangeRead) => <VoidBadge voidedAt={r.voided_at} />, sortValue: (r: HouseExchangeRead) => r.voided_at ?? '' },
     { key: 'created_at', header: 'Date', render: (r: HouseExchangeRead) => <span className="text-xs text-gray-400">{fmtDate(r.created_at)}</span>, sortValue: (r: HouseExchangeRead) => r.created_at },
     {
@@ -213,7 +214,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
   // Only show currencies the house account actually has wallets for
   const houseWalletCurrencies = new Set(houseWallets.map(w => w.currency_id))
   const currOpts = (houseId ? currencies.filter(c => houseWalletCurrencies.has(c.ticker)) : currencies)
-    .map(c => ({ value: c.ticker, label: `${c.ticker} — ${c.name}` }))
+    .map(c => ({ value: c.ticker, label: c.name || c.ticker }))
 
   const houseOpts = houseUsers.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username}` }))
 
@@ -281,10 +282,17 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Input label="Amount From *" type="number" step="any" value={amtFrom} onChange={e => setAmtFrom(e.target.value)} />
           <Input label="Amount To *" type="number" step="any" value={amtTo} onChange={e => setAmtTo(e.target.value)} />
-          <Input label="Exchange Rate *" type="number" step="any" value={rate} onChange={e => setRate(e.target.value)} />
+          <RateCalculator
+            rate={rate}
+            setRate={setRate}
+            amountIn={amtFrom}
+            setAmountIn={setAmtFrom}
+            amountOut={amtTo}
+            setAmountOut={setAmtTo}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Description</label>

@@ -5,10 +5,10 @@ import { getClientBalances, getClientDebts, listUsers, listCurrencies, downloadF
 import { PageHeader, Card, Table, Badge, SearchableSelect, Select, Input, Button, Alert } from '../components/ui'
 import type { ClientBalanceReport, UserRead, CurrencyRead } from '../types'
 import { saveBlobResponse } from '../utils/download'
+import { formatNumber } from '../utils/number'
 
 function fmtAmt(s: string) {
-  const n = parseFloat(s)
-  return isNaN(n) ? s : new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }).format(Math.abs(n))
+  return formatNumber(Math.abs(Number(s)), 4)
 }
 
 const positionColors: Record<string, 'red' | 'green' | 'gray'> = {
@@ -49,7 +49,7 @@ export default function Reports() {
   ]
   const currOpts = [
     { value: '', label: 'All Currencies' },
-    ...currencies.map((c: CurrencyRead) => ({ value: c.ticker, label: `${c.ticker} — ${c.name}` }))
+    ...currencies.map((c: CurrencyRead) => ({ value: c.ticker, label: c.name || c.ticker }))
   ]
 
   const balancesQuery = useQuery({

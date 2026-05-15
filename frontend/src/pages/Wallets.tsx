@@ -7,12 +7,10 @@ import { PageHeader, Button, Table, Modal, Input, Alert, ConfirmDialog, Card, Se
 import type { FilterDef, FilterValues } from '../components/ui'
 import type { WalletRead, WalletAdjustmentRead, UserRead, CurrencyRead, WalletCreate } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
+import { formatNumber } from '../utils/number'
 
 function fmtAmt(s: string) {
-  const n = parseFloat(s)
-  if (isNaN(n)) return s
-  const fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-  return fmt.format(n)
+  return formatNumber(s, 4, 2)
 }
 const fmtDate = fmtDateTimeShort
 const ALL_CURRENCIES = '__ALL_CURRENCIES__'
@@ -95,12 +93,7 @@ export default function Wallets() {
     {
       key: 'currency', header: 'Currency', render: (r: WalletRead) => {
         const c = currMap[r.currency_id]
-        return (
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-semibold text-[var(--color-primary)]">{r.currency_id}</span>
-            {c && <span className="text-gray-400 text-xs">{c.name}</span>}
-          </div>
-        )
+        return <span className="text-sm font-medium text-gray-800">{c?.name || r.currency_id}</span>
       }
     },
     {
@@ -241,7 +234,7 @@ function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies
   const missingCount = currencies.filter(c => !existingForUser.has(c.ticker)).length
   const currOpts = [
     { value: ALL_CURRENCIES, label: 'All currencies', sublabel: userId ? `${missingCount} missing wallet${missingCount === 1 ? '' : 's'}` : 'Create one wallet per currency' },
-    ...currencies.map(c => ({ value: c.ticker, label: `${c.ticker} — ${c.name}` })),
+    ...currencies.map(c => ({ value: c.ticker, label: c.name || c.ticker })),
   ]
 
   const submit = () => {

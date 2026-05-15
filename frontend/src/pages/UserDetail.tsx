@@ -7,10 +7,10 @@ import { Card, Button, Table, Badge, VoidBadge, Modal, Input, Alert } from '../c
 import type { OrderRead, JournalEntryRead, WalletRead, CurrencyRead } from '../types'
 import { fmtDate, fmtDateTimeShort } from '../utils/date'
 import { saveBlobResponse } from '../utils/download'
+import { formatNumber } from '../utils/number'
 
 function fmtAmt(s: string | number, decimals = 4) {
-  const n = typeof s === 'string' ? parseFloat(s) : s
-  return isNaN(n) ? String(s) : new Intl.NumberFormat('en-US', { maximumFractionDigits: decimals }).format(n)
+  return formatNumber(s, decimals)
 }
 
 // ── Export Modal ──────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ export default function UserDetail() {
       render: (r: OrderRead) => <span className="text-sm">{fmtAmt(r.amount_in)} <span className="text-gray-400">→</span> {fmtAmt(r.amount_out)}</span>,
       sortValue: (r: OrderRead) => parseFloat(r.amount_in),
     },
-    { key: 'rate', header: 'Rate', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-600">{r.exchange_rate}</span>, sortValue: (r: OrderRead) => parseFloat(r.exchange_rate) },
+    { key: 'rate', header: 'Rate', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-600">{formatNumber(r.exchange_rate, 8)}</span>, sortValue: (r: OrderRead) => parseFloat(r.exchange_rate) },
     { key: 'status', header: 'Status', render: (r: OrderRead) => <VoidBadge voidedAt={r.voided_at} />, sortValue: (r: OrderRead) => r.voided_at ?? '' },
     { key: 'date', header: 'Date', render: (r: OrderRead) => <span className="text-xs text-gray-400">{fmtDateTimeShort(r.created_at)}</span>, sortValue: (r: OrderRead) => r.created_at },
   ]
@@ -289,7 +289,7 @@ export default function UserDetail() {
                       {c && <span className="text-xs text-gray-400 ml-1.5">{c.name}</span>}
                     </div>
                     <span className="font-mono text-sm font-semibold text-gray-900">
-                      {c?.symbol ?? ''}{fmtAmt(w.balance, 2)}
+                      {c?.symbol ? `${c.symbol} ` : ''}{fmtAmt(w.balance, 2)}
                     </span>
                   </div>
                 )

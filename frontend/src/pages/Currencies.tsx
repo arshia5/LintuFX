@@ -10,6 +10,7 @@ import {
 import type { FilterDef, FilterValues } from '../components/ui'
 import type { CurrencyRead, CurrencyCreate } from '../types'
 import { fmtDate } from '../utils/date'
+import { stripNumberFormatting } from '../utils/number'
 
 export default function Currencies() {
   const qc = useQueryClient()
@@ -143,7 +144,7 @@ function CreateModal({ open, onClose, onSubmit, loading, error }: {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Symbol" placeholder="$" {...register('symbol')} />
-          <Input label="Decimals" type="number" min={0} max={18} {...register('decimals', { valueAsNumber: true })} />
+          <Input label="Decimals" type="number" min={0} max={18} {...register('decimals', { setValueAs: v => Number(stripNumberFormatting(v)) })} />
         </div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="is_active_c" {...register('is_active')} className="rounded" defaultChecked />
@@ -169,7 +170,7 @@ function EditModal({ currency, onClose, onSubmit, loading }: {
           <Input label="Name" {...register('name')} />
           <Input label="Symbol" {...register('symbol')} />
         </div>
-        <Input label="Decimals" type="number" min={0} max={18} {...register('decimals', { valueAsNumber: true })} />
+        <Input label="Decimals" type="number" min={0} max={18} {...register('decimals', { setValueAs: v => Number(stripNumberFormatting(v)) })} />
         <div className="flex items-center gap-2">
           <input type="checkbox" id="is_active_e" {...register('is_active')} className="rounded" />
           <label htmlFor="is_active_e" className="text-sm text-gray-700">Active</label>

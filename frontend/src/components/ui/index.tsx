@@ -1,5 +1,6 @@
 import { forwardRef, ReactNode, useState, useRef, useEffect, useMemo } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown, X, Loader2, AlertCircle, CheckCircle, Info } from 'lucide-react'
+import { formatNumericInput, stripNumberFormatting } from '../../utils/number'
 export { FilterBar, initFilters } from './FilterBar'
 export type { FilterDef, FilterValues } from './FilterBar'
 
@@ -51,18 +52,44 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, className = '', ...rest }, ref) => (
-    <div className="flex flex-col gap-1">
-      {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
-      <input
-        ref={ref}
-        className={`px-3 py-2 border rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent transition ${error ? 'border-red-400' : 'border-gray-300'} ${className}`}
-        {...rest}
-      />
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      {helper && !error && <p className="text-xs text-gray-500">{helper}</p>}
-    </div>
-  )
+  ({ label, error, helper, className = '', type, value, defaultValue, onChange, ...rest }, ref) => {
+    const isNumeric = type === 'number'
+    const displayValue = isNumeric && (typeof value === 'string' || typeof value === 'number') ? formatNumericInput(value) : value
+    const displayDefaultValue = isNumeric && (typeof defaultValue === 'string' || typeof defaultValue === 'number') ? formatNumericInput(defaultValue) : defaultValue
+
+    const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (!isNumeric) {
+        onChange?.(event)
+        return
+      }
+
+      const rawValue = stripNumberFormatting(event.currentTarget.value)
+      event.currentTarget.value = rawValue
+      onChange?.(event)
+
+      if (value === undefined) {
+        event.currentTarget.value = formatNumericInput(rawValue)
+      }
+    }
+
+    return (
+      <div className="flex flex-col gap-1">
+        {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+        <input
+          ref={ref}
+          type={isNumeric ? 'text' : type}
+          inputMode={isNumeric ? 'decimal' : rest.inputMode}
+          value={displayValue}
+          defaultValue={displayDefaultValue}
+          onChange={handleChange}
+          className={`px-3 py-2 border rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent transition ${error ? 'border-red-400' : 'border-gray-300'} ${className}`}
+          {...rest}
+        />
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        {helper && !error && <p className="text-xs text-gray-500">{helper}</p>}
+      </div>
+    )
+  }
 )
 Input.displayName = 'Input'
 

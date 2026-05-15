@@ -5,7 +5,7 @@ import { Plus, Trash2, SlidersHorizontal, History } from 'lucide-react'
 import { listWallets, createWallet, deleteWallet, adjustWalletBalance, listWalletAdjustments, listUsers, listCurrencies } from '../api'
 import { PageHeader, Button, Table, Modal, Input, Alert, ConfirmDialog, Card, SearchableSelect, Textarea, Badge, FilterBar, initFilters } from '../components/ui'
 import type { FilterDef, FilterValues } from '../components/ui'
-import type { WalletRead, WalletAdjustmentRead, UserRead, CurrencyRead } from '../types'
+import type { WalletRead, WalletAdjustmentRead, UserRead, CurrencyRead, WalletCreate } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
 
 function fmtAmt(s: string) {
@@ -15,6 +15,13 @@ function fmtAmt(s: string) {
   return fmt.format(n)
 }
 const fmtDate = fmtDateTimeShort
+const ALL_CURRENCIES = '__ALL_CURRENCIES__'
+
+type CreateWalletFormData = {
+  user_id: number
+  currency_id: string
+  balance?: string
+}
 
 export default function Wallets() {
   const qc = useQueryClient()
@@ -35,9 +42,30 @@ export default function Wallets() {
   currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
 
   const createMut = useMutation({
-    mutationFn: createWallet,
+    mutationFn: async (data: CreateWalletFormData) => {
+      if (data.currency_id !== ALL_CURRENCIES) {
+        return createWallet(data as WalletCreate)
+      }
+
+      const existing = new Set(
+        wallets
+          .filter((wallet: WalletRead) => wallet.user_id === data.user_id)
+          .map((wallet: WalletRead) => wallet.currency_id)
+      )
+      const missingCurrencies = currencies.filter((currency: CurrencyRead) => !existing.has(currency.ticker))
+
+      if (missingCurrencies.length === 0) {
+        throw new Error('This user already has wallets for every currency')
+      }
+
+      return Promise.all(
+        missingCurrencies.map((currency: CurrencyRead) =>
+          createWallet({ user_id: data.user_id, currency_id: currency.ticker, balance: data.balance })
+        )
+      )
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['wallets'] }); setCreateOpen(false) },
-    onError: (e: { response?: { data?: { detail?: string } } }) => setApiError(e.response?.data?.detail || 'Failed to create wallet'),
+    onError: (e: { response?: { data?: { detail?: string } }; message?: string }) => setApiError(e.response?.data?.detail || e.message || 'Failed to create wallet'),
   })
 
   const deleteMut = useMutation({
@@ -161,6 +189,7 @@ export default function Wallets() {
         loading={createMut.isPending}
         users={users}
         currencies={currencies}
+        wallets={wallets}
       />
 
       {/* Adjust Balance */}
@@ -196,9 +225,9 @@ export default function Wallets() {
   )
 }
 
-function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies }: {
-  open: boolean; onClose: () => void; onSubmit: (d: { user_id: number; currency_id: string; balance?: string }) => void
-  loading: boolean; users: UserRead[]; currencies: CurrencyRead[]
+function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies, wallets }: {
+  open: boolean; onClose: () => void; onSubmit: (d: CreateWalletFormData) => void
+  loading: boolean; users: UserRead[]; currencies: CurrencyRead[]; wallets: WalletRead[]
 }) {
   const [userId, setUserId] = useState<number | null>(null)
   const [currencyId, setCurrencyId] = useState<string | null>(null)
@@ -206,11 +235,19 @@ function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies
   const [err, setErr] = useState('')
 
   const userOpts = users.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username} · ${u.role}` }))
-  const currOpts = currencies.map(c => ({ value: c.ticker, label: `${c.ticker} — ${c.name}` }))
+  const existingForUser = userId
+    ? new Set(wallets.filter(w => w.user_id === userId).map(w => w.currency_id))
+    : new Set<string>()
+  const missingCount = currencies.filter(c => !existingForUser.has(c.ticker)).length
+  const currOpts = [
+    { value: ALL_CURRENCIES, label: 'All currencies', sublabel: userId ? `${missingCount} missing wallet${missingCount === 1 ? '' : 's'}` : 'Create one wallet per currency' },
+    ...currencies.map(c => ({ value: c.ticker, label: `${c.ticker} — ${c.name}` })),
+  ]
 
   const submit = () => {
     if (!userId) { setErr('Please select a user'); return }
     if (!currencyId) { setErr('Please select a currency'); return }
+    if (currencyId === ALL_CURRENCIES && missingCount === 0) { setErr('This user already has wallets for every currency'); return }
     onSubmit({ user_id: userId, currency_id: currencyId, balance })
   }
 
@@ -220,12 +257,14 @@ function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies
     <Modal open={open} onClose={close} title="New Wallet">
       <div className="space-y-4">
         {err && <Alert type="error" message={err} />}
-        <SearchableSelect label="Owner *" options={userOpts} value={userId} onChange={v => setUserId(Number(v))} placeholder="Select a user..." />
+        <SearchableSelect label="Owner *" options={userOpts} value={userId} onChange={v => { setUserId(Number(v)); setCurrencyId(null) }} placeholder="Select a user..." />
         <SearchableSelect label="Currency *" options={currOpts} value={currencyId} onChange={v => setCurrencyId(String(v))} placeholder="Select currency..." />
         <Input label="Initial Balance" type="number" value={balance} onChange={e => setBalance(e.target.value)} />
         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={close}>Cancel</Button>
-          <Button size="sm" onClick={submit} loading={loading}>Create Wallet</Button>
+          <Button size="sm" onClick={submit} loading={loading}>
+            {currencyId === ALL_CURRENCIES ? `Create ${missingCount} Wallet${missingCount === 1 ? '' : 's'}` : 'Create Wallet'}
+          </Button>
         </div>
       </div>
     </Modal>

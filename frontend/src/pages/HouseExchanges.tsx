@@ -132,7 +132,7 @@ export default function HouseExchanges() {
       <Card>
         <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No exchanges match your filters" defaultSortKey="created_at" defaultSortDir="desc" />
         {expandedItem && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-sm grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{expandedItem.description || '—'}</p></div>
             <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">#{expandedItem.created_by_user_id}</p></div>
             {expandedItem.voided_at && <>
@@ -240,7 +240,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
           onChange={v => { setHouseId(Number(v)); setCurrFrom(''); setCurrTo('') }}
           placeholder="Select house account..."
         />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SearchableSelect
             label="Currency From *"
             options={currOpts}
@@ -261,7 +261,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
 
         {/* Balance preview */}
         {houseId && (currFrom || currTo) && (
-          <div className="bg-gray-50 rounded-lg px-4 py-3 grid grid-cols-2 gap-3">
+          <div className="bg-gray-50 rounded-lg px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="text-xs">
               <span className="text-gray-500 font-medium">From balance: </span>
               {currFrom
@@ -296,7 +296,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
             <textarea rows={2} value={corrReason} onChange={e => setCorrReason(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />
           </div>
         )}
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={submit} loading={loading}>{isCorrection ? 'Apply Correction' : 'Create Exchange'}</Button>
         </div>

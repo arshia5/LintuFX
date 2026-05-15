@@ -154,7 +154,7 @@ export default function Orders() {
         <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No orders match your filters" defaultSortKey="created_at" defaultSortDir="desc" />
         {expandedOrder && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-sm">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{expandedOrder.description || '—'}</p></div>
               <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">#{expandedOrder.created_by_user_id}</p></div>
               {expandedOrder.voided_at && <>
@@ -254,7 +254,7 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
       <div className="space-y-4">
         {err && <Alert type="error" message={err} />}
         <SearchableSelect label="Client *" options={clientOpts} value={clientId} onChange={v => setClientId(Number(v))} placeholder="Select client..." />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700">Order Type *</label>
             <div className="flex gap-2">
@@ -268,15 +268,15 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
           </div>
           <Input label="Exchange Rate *" type="number" step="any" value={rate} onChange={e => setRate(e.target.value)} placeholder="1.2345" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SearchableSelect label="Currency In *" options={currOpts} value={currIn} onChange={v => setCurrIn(String(v))} placeholder="Select..." />
           <SearchableSelect label="Currency Out *" options={currOpts} value={currOut} onChange={v => setCurrOut(String(v))} placeholder="Select..." />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Amount In *" type="number" step="any" value={amountIn} onChange={e => setAmountIn(e.target.value)} />
           <Input label="Amount Out *" type="number" step="any" value={amountOut} onChange={e => setAmountOut(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700">Description</label>
             <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional note..." className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />
@@ -294,9 +294,9 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
             <textarea rows={2} value={corrReason} onChange={e => setCorrReason(e.target.value)} placeholder="Why is this correction needed?" className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />
           </div>
         )}
-        <div className="flex gap-3 justify-end pt-2">
-          <Button variant="secondary" size="sm" onClick={close}>Cancel</Button>
-          <Button size="sm" onClick={submit} loading={loading}>{isCorrection ? 'Apply Correction' : 'Create Order'}</Button>
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
+          <Button variant="secondary" size="sm" onClick={close} className="justify-center">Cancel</Button>
+          <Button size="sm" onClick={submit} loading={loading} className="justify-center">{isCorrection ? 'Apply Correction' : 'Create Order'}</Button>
         </div>
       </div>
     </Modal>
@@ -320,9 +320,9 @@ function VoidModal({ open, title, onClose, onSubmit, loading }: {
           <label className="text-sm font-medium text-gray-700">Void Reason *</label>
           <textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder="Why are you voiding this record?" className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />
         </div>
-        <div className="flex gap-3 justify-end">
-          <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="danger" size="sm" onClick={submit} loading={loading}>Void</Button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <Button variant="secondary" size="sm" onClick={onClose} className="justify-center">Cancel</Button>
+          <Button variant="danger" size="sm" onClick={submit} loading={loading} className="justify-center">Void</Button>
         </div>
       </div>
     </Modal>

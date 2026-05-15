@@ -223,7 +223,7 @@ function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies
         <SearchableSelect label="Owner *" options={userOpts} value={userId} onChange={v => setUserId(Number(v))} placeholder="Select a user..." />
         <SearchableSelect label="Currency *" options={currOpts} value={currencyId} onChange={v => setCurrencyId(String(v))} placeholder="Select currency..." />
         <Input label="Initial Balance" type="number" value={balance} onChange={e => setBalance(e.target.value)} />
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={close}>Cancel</Button>
           <Button size="sm" onClick={submit} loading={loading}>Create Wallet</Button>
         </div>
@@ -286,7 +286,7 @@ function AdjustModal({ wallet, user, onClose, onSubmit, loading }: {
           />
         </div>
 
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={submit} loading={loading}>Apply Adjustment</Button>
         </div>

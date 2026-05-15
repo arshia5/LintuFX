@@ -47,7 +47,7 @@ export function FilterBar({ filters, values, onChange, resultCount }: FilterBarP
       {/* Top row: search boxes + expand button */}
       <div className="flex flex-wrap gap-2 items-center">
         {textFilters.map(f => (
-          <div key={f.key} className="relative flex-1 min-w-[180px] max-w-xs">
+          <div key={f.key} className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[180px] sm:max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
@@ -67,7 +67,7 @@ export function FilterBar({ filters, values, onChange, resultCount }: FilterBarP
         {otherFilters.length > 0 && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition ${expanded || activeCount > 0 ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-blue-50' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}
+            className={`flex min-h-10 flex-1 items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition sm:flex-none ${expanded || activeCount > 0 ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-blue-50' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}
           >
             <SlidersHorizontal size={14} />
             Filters
@@ -80,19 +80,19 @@ export function FilterBar({ filters, values, onChange, resultCount }: FilterBarP
         )}
 
         {activeCount > 0 && (
-          <button onClick={clearAll} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition">
+          <button onClick={clearAll} className="flex min-h-10 flex-1 items-center justify-center gap-1 text-sm text-gray-400 transition hover:text-gray-600 sm:flex-none">
             <X size={13} /> Clear all
           </button>
         )}
 
         {resultCount !== undefined && (
-          <span className="ml-auto text-xs text-gray-400">{resultCount} result{resultCount !== 1 ? 's' : ''}</span>
+          <span className="w-full text-xs text-gray-400 sm:ml-auto sm:w-auto">{resultCount} result{resultCount !== 1 ? 's' : ''}</span>
         )}
       </div>
 
       {/* Expanded filter panel */}
       {expanded && otherFilters.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {otherFilters.map(f => {
             if (f.type === 'select') return (
               <div key={f.key} className="flex flex-col gap-1">
@@ -136,7 +136,7 @@ export function FilterBar({ filters, values, onChange, resultCount }: FilterBarP
               return (
                 <div key={f.key} className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">{f.label}</label>
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1">
                     {[{ value: '', label: 'All' }, ...(f.options ?? [])].map(o => (
                       <button
                         key={o.value}

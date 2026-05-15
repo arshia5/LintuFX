@@ -60,7 +60,7 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
         <p className="text-sm text-gray-500">
           Select the report period. Orders and transfers will be combined in one table, sorted by date.
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="From date" type="date" value={from} onChange={e => setFrom(e.target.value)} />
           <Input label="To date" type="date" value={to} onChange={e => setTo(e.target.value)} />
         </div>
@@ -69,7 +69,7 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
           <span className="font-medium">{filteredJournals.length}</span> transfers in period
           &nbsp;·&nbsp; <span className="font-medium">{filteredOrders.length + filteredJournals.length}</span> total rows
         </div>
-        <div className="flex gap-3 justify-end pt-1">
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" icon={<FileSpreadsheet size={15} />} onClick={handleExport} loading={loading}>
             Download Excel
@@ -211,29 +211,29 @@ export default function UserDetail() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={() => navigate('/users')}
             className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition"
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-gray-900">{fullName}</h1>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="break-words text-xl font-bold text-gray-900">{fullName}</h1>
               <Badge variant={user.role === 'CLIENT' ? 'blue' : 'purple'}>{user.role}</Badge>
             </div>
             <p className="text-sm text-gray-400 mt-0.5">@{user.username} · Member since {fmtDate(user.created_at)}</p>
           </div>
         </div>
-        <Button icon={<FileSpreadsheet size={16} />} onClick={() => setExportOpen(true)}>
+        <Button icon={<FileSpreadsheet size={16} />} onClick={() => setExportOpen(true)} className="justify-center sm:shrink-0">
           Export Statement
         </Button>
       </div>
 
       {/* Stat row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 rounded-lg"><Wallet size={18} className="text-blue-600" /></div>
@@ -306,7 +306,7 @@ export default function UserDetail() {
           {Object.keys(netPosition).length === 0 ? (
             <p className="text-xs text-gray-400 italic">No active orders</p>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {Object.entries(netPosition).map(([curr, net]) => {
                 const c = currMap[curr]
                 const isPos = net > 0

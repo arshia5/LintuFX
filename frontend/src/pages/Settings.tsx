@@ -192,7 +192,7 @@ export default function Settings() {
               <Type size={16} className="text-[var(--color-primary)]" />
               <h2 className="text-sm font-semibold text-gray-800">Typography & Layout</h2>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-gray-700">Font Family</label>
                 <select
@@ -246,7 +246,7 @@ export default function Settings() {
                 {/* Mini content */}
                 <div className="flex-1 p-3 bg-gray-50">
                   <div className="h-4 bg-gray-200 rounded mb-3 w-24" />
-                  <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                     {[1, 2].map(i => (
                       <div key={i} className="bg-white rounded-lg p-2 border border-gray-100">
                         <div className="h-3 bg-gray-200 rounded mb-1 w-14" />

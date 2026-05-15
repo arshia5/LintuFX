@@ -178,7 +178,7 @@ export default function EventLogs() {
             {Object.keys(expandedLog.details).length === 0 ? (
               <p className="text-xs text-gray-400 italic">No additional details recorded.</p>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {Object.entries(expandedLog.details).map(([key, value]) => (
                   <div key={key} className="bg-white rounded-lg border border-gray-100 px-3 py-2">
                     <p className="text-xs text-gray-400 mb-0.5 font-medium">

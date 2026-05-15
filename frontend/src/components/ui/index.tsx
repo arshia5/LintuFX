@@ -32,12 +32,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'primary', size = 'md', loading, icon, children, className = '', ...rest }, ref) => (
     <button
       ref={ref}
-      className={`${btnBase} ${btnVariants[variant]} ${btnSizes[size]} ${className}`}
+      className={`${btnBase} ${btnVariants[variant]} ${btnSizes[size]} min-w-0 ${className}`}
       disabled={loading || rest.disabled}
       {...rest}
     >
       {loading ? <Loader2 size={16} className="animate-spin" /> : icon}
-      {children}
+      {children && <span className="truncate">{children}</span>}
     </button>
   )
 )
@@ -250,16 +250,16 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative w-full ${modalSizes[size]} bg-white rounded-xl shadow-2xl`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+      <div className={`relative flex max-h-[92dvh] w-full flex-col ${modalSizes[size]} bg-white rounded-t-2xl shadow-2xl sm:rounded-xl`}>
+        <div className="flex items-center justify-between gap-3 px-4 py-4 border-b border-gray-100 sm:px-6">
+          <h2 className="min-w-0 truncate text-base font-semibold text-gray-900">{title}</h2>
+          <button onClick={onClose} className="shrink-0 p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
             <X size={18} />
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="overflow-y-auto px-4 py-5 sm:px-6">{children}</div>
       </div>
     </div>
   )
@@ -313,14 +313,14 @@ export function Table<T>({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto overscroll-x-contain">
+      <table className="w-full min-w-max text-sm">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
             {columns.map(col => (
               <th
                 key={col.key}
-                className={`px-4 py-3 text-left font-medium text-gray-600 ${col.className ?? ''} ${col.sortValue ? 'cursor-pointer select-none hover:text-gray-900' : ''}`}
+                className={`whitespace-nowrap px-3 py-3 text-left font-medium text-gray-600 sm:px-4 ${col.className ?? ''} ${col.sortValue ? 'cursor-pointer select-none hover:text-gray-900' : ''}`}
                 onClick={() => col.sortValue && handleSort(col.key)}
               >
                 <span className="inline-flex items-center gap-1">
@@ -356,7 +356,7 @@ export function Table<T>({
                 className={`border-b border-gray-100 hover:bg-gray-50 transition ${onRowClick ? 'cursor-pointer' : ''}`}
               >
                 {columns.map(col => (
-                  <td key={col.key} className={`px-4 py-3 text-gray-800 ${col.className ?? ''}`}>
+                  <td key={col.key} className={`whitespace-nowrap px-3 py-3 text-gray-800 sm:px-4 ${col.className ?? ''}`}>
                     {col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as ReactNode}
                   </td>
                 ))}
@@ -400,14 +400,14 @@ export function StatCard({ label, value, sub, icon, color = 'blue' }: {
     purple: 'bg-purple-50 text-purple-600',
   }
   return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <div>
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-sm text-gray-500 font-medium">{label}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+          <p className="mt-1 break-words text-xl font-bold text-gray-900 sm:text-2xl">{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
         </div>
-        <div className={`p-2.5 rounded-lg ${colorMap[color] ?? colorMap.blue}`}>
+        <div className={`shrink-0 p-2.5 rounded-lg ${colorMap[color] ?? colorMap.blue}`}>
           {icon}
         </div>
       </div>
@@ -423,9 +423,9 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm">
       <p className="text-sm text-gray-600 mb-5">{message}</p>
-      <div className="flex gap-3 justify-end">
-        <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-        <Button variant={variant} size="sm" loading={loading} onClick={onConfirm}>{confirmLabel}</Button>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+        <Button variant="secondary" size="sm" onClick={onClose} className="justify-center">Cancel</Button>
+        <Button variant={variant} size="sm" loading={loading} onClick={onConfirm} className="justify-center">{confirmLabel}</Button>
       </div>
     </Modal>
   )
@@ -434,12 +434,12 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
 // ── Page Header ───────────────────────────────────────────────────────────────
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <div className="flex items-start justify-between mb-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+    <div className="flex flex-col gap-3 mb-5 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <h1 className="break-words text-xl font-bold text-gray-900">{title}</h1>
         {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
       </div>
-      {action && <div>{action}</div>}
+      {action && <div className="shrink-0 sm:self-start">{action}</div>}
     </div>
   )
 }

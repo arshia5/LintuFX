@@ -185,13 +185,13 @@ function UserModal({ open, user, onClose, onSubmit, loading, title }: {
     <Modal open={open} onClose={close} title={title}>
       <form onSubmit={handleSubmit(submit)} className="space-y-4">
         <Select label="Role *" options={roleOptions} {...register('role')} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="First Name *" placeholder="John" {...register('name')} />
           <Input label="Last Name" placeholder="Doe" {...register('surname')} />
         </div>
         <Input label="Username *" placeholder="johndoe" {...register('username')} />
         <Input label={user ? 'New Password (leave blank to keep)' : 'Password'} type="password" placeholder="••••••••" {...register('password')} />
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" type="button" onClick={close}>Cancel</Button>
           <Button size="sm" type="submit" loading={loading}>{user ? 'Save Changes' : 'Create User'}</Button>
         </div>

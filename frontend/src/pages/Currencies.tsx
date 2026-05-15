@@ -137,11 +137,11 @@ function CreateModal({ open, onClose, onSubmit, loading, error }: {
     <Modal open={open} onClose={close} title="New Currency">
       <form onSubmit={handleSubmit(d => onSubmit(d))} className="space-y-4">
         {error && <Alert type="error" message={error} />}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Ticker *" placeholder="USD" {...register('ticker', { required: 'Required' })} error={errors.ticker?.message} className="uppercase" />
           <Input label="Name *" placeholder="US Dollar" {...register('name', { required: 'Required' })} error={errors.name?.message} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Symbol" placeholder="$" {...register('symbol')} />
           <Input label="Decimals" type="number" min={0} max={18} {...register('decimals', { valueAsNumber: true })} />
         </div>
@@ -149,7 +149,7 @@ function CreateModal({ open, onClose, onSubmit, loading, error }: {
           <input type="checkbox" id="is_active_c" {...register('is_active')} className="rounded" defaultChecked />
           <label htmlFor="is_active_c" className="text-sm text-gray-700">Active</label>
         </div>
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" type="button" onClick={close}>Cancel</Button>
           <Button size="sm" type="submit" loading={loading}>Create Currency</Button>
         </div>
@@ -165,7 +165,7 @@ function EditModal({ currency, onClose, onSubmit, loading }: {
   return (
     <Modal open title={`Edit ${currency.ticker}`} onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Name" {...register('name')} />
           <Input label="Symbol" {...register('symbol')} />
         </div>
@@ -174,7 +174,7 @@ function EditModal({ currency, onClose, onSubmit, loading }: {
           <input type="checkbox" id="is_active_e" {...register('is_active')} className="rounded" />
           <label htmlFor="is_active_e" className="text-sm text-gray-700">Active</label>
         </div>
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" type="button" onClick={onClose}>Cancel</Button>
           <Button size="sm" type="submit" loading={loading}>Save Changes</Button>
         </div>

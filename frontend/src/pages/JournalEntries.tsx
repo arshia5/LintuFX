@@ -281,7 +281,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
       <div className="space-y-4">
         {err && <Alert type="error" message={err} />}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SearchableSelect
             label="From (sender) *"
             options={userOpts}
@@ -298,7 +298,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SearchableSelect
             label="Currency *"
             options={currOpts}
@@ -312,7 +312,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
 
         {/* Resolved wallet preview */}
         {currencyId && (fromUser || toUser) && (
-          <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500 grid grid-cols-2 gap-2">
+          <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs text-gray-500 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <span className="font-medium text-gray-600">From wallet: </span>
               {resolvedFromWallet
@@ -328,7 +328,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700">Description</label>
             <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />
@@ -341,7 +341,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
             <textarea rows={2} value={corrReason} onChange={e => setCorrReason(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />
           </div>
         )}
-        <div className="flex gap-3 justify-end pt-2">
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={submit} loading={loading}>{isCorrection ? 'Apply Correction' : 'Create Entry'}</Button>
         </div>

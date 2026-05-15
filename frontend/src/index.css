@@ -19,6 +19,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: #f8fafc;
   color: #1e293b;
+  overflow-x: hidden;
+}
+
+button, input, select, textarea {
+  font: inherit;
 }
 
 /* Scrollbar */

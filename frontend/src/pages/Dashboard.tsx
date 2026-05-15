@@ -191,7 +191,7 @@ export default function Dashboard() {
       </Card>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Total Orders"
           value={orders.length}
@@ -223,7 +223,7 @@ export default function Dashboard() {
       </div>
 
       {/* Second stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Clients Owe House"
           value={clientOwes.length}
@@ -298,14 +298,14 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-2">
               {recentOrders.map((o: OrderRead) => (
-                <div key={o.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <div className="flex items-center gap-3">
+                <div key={o.id} className="flex items-start justify-between gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <div className="flex min-w-0 items-center gap-3">
                     <Badge variant={o.order_type === 'BUY' ? 'green' : 'blue'}>{o.order_type}</Badge>
-                    <span className="text-sm text-gray-700">
+                    <span className="truncate text-sm text-gray-700">
                       {o.currency_in_id} → {o.currency_out_id}
                     </span>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <p className="text-sm font-medium text-gray-800">{fmtAmt(o.amount_in)}</p>
                     <p className="text-xs text-gray-400">{fmtDate(o.created_at)}</p>
                   </div>

@@ -203,7 +203,7 @@ export default function Reports() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <SearchableSelect
           options={clientOpts as { value: string | number; label: string; sublabel?: string }[]}
           value={clientId ?? ''}

@@ -43,8 +43,33 @@ cp frontend/.env.example frontend/.env
 
 Set the backend database connection and JWT secret in `backend/.env`. Set `VITE_API_URL` in `frontend/.env` if the API is not available at the default URL.
 
-## Deployment
+## Docker
 
-Docker deployment files are in `docker/`. See [docker/README.md](docker/README.md) for the production container setup.
+The Docker setup runs:
+
+- `web`: Nginx serving the frontend and proxying `/api/*`
+- `api`: FastAPI backend with migrations run on startup
+
+It expects PostgreSQL to run outside this compose file.
+
+```bash
+cd docker
+cp .env.example .env
+```
+
+Edit `docker/.env` with the PostgreSQL connection, JWT secret, and public browser origin. Then start the app:
+
+```bash
+docker compose -f compose.yml up --build -d
+```
+
+Useful commands:
+
+```bash
+docker compose -f compose.yml logs -f
+docker compose -f compose.yml down
+```
+
+See [docker/README.md](docker/README.md) for full Docker deployment notes.
 
 More backend details, accounting rules, and API endpoint notes are in [backend/README.md](backend/README.md).

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -6,6 +7,7 @@ import {
 import {
   ShoppingCart, ArrowLeftRight, BookOpen, Users,
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle,
+  ChevronDown, ChevronUp, ChevronsUpDown,
 } from 'lucide-react'
 import { listOrders, listHouseExchanges, listJournalEntries, listUsers, getClientBalances, listWallets, listCurrencies } from '../api'
 import { PageHeader, StatCard, Card, Badge } from '../components/ui'
@@ -15,6 +17,15 @@ import { fmtDateLabel } from '../utils/date'
 const COLORS = ['#1a6ee8', '#0f9d58', '#f4b400', '#db4437', '#7b1fa2', '#00acc1']
 
 const fmtDate = fmtDateLabel
+type HoldingsSortKey = 'currency' | 'total' | 'house' | 'clients' | 'walletCount'
+type HoldingsRow = {
+  ticker: string
+  total: number
+  house: number
+  clients: number
+  walletCount: number
+  currency?: CurrencyRead
+}
 
 function fmtAmt(s: string) {
   const n = parseFloat(s)
@@ -23,6 +34,8 @@ function fmtAmt(s: string) {
 }
 
 export default function Dashboard() {
+  const [holdingsSortKey, setHoldingsSortKey] = useState<HoldingsSortKey>('total')
+  const [holdingsSortDir, setHoldingsSortDir] = useState<'asc' | 'desc'>('desc')
   const { data: orders = [], isLoading: ordersLoading } = useQuery({ queryKey: ['orders'], queryFn: () => listOrders() })
   const { data: exchanges = [] } = useQuery({ queryKey: ['house-exchanges'], queryFn: () => listHouseExchanges() })
   const { data: journals = [] } = useQuery({ queryKey: ['journal-entries'], queryFn: () => listJournalEntries() })
@@ -95,9 +108,55 @@ export default function Dashboard() {
     else holdingsByCurrency[w.currency_id].clients += bal
   })
 
-  const holdingsRows = Object.entries(holdingsByCurrency)
+  const holdingsRows: HoldingsRow[] = Object.entries(holdingsByCurrency)
     .map(([ticker, v]) => ({ ticker, ...v, currency: currMap[ticker] }))
-    .sort((a, b) => b.total - a.total)
+
+  const sortedHoldingsRows = useMemo(() => {
+    const getValue = (row: HoldingsRow) => {
+      if (holdingsSortKey === 'currency') return (row.currency?.name || row.ticker).toLowerCase()
+      return row[holdingsSortKey]
+    }
+
+    return [...holdingsRows].sort((a, b) => {
+      const av = getValue(a)
+      const bv = getValue(b)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return holdingsSortDir === 'asc' ? cmp : -cmp
+    })
+  }, [holdingsRows, holdingsSortKey, holdingsSortDir])
+
+  const setHoldingsSort = (key: HoldingsSortKey) => {
+    if (holdingsSortKey === key) setHoldingsSortDir(dir => dir === 'asc' ? 'desc' : 'asc')
+    else {
+      setHoldingsSortKey(key)
+      setHoldingsSortDir(key === 'currency' ? 'asc' : 'desc')
+    }
+  }
+
+  const sortIcon = (key: HoldingsSortKey) => {
+    if (holdingsSortKey !== key) return <ChevronsUpDown size={13} className="text-gray-300" />
+    return holdingsSortDir === 'asc'
+      ? <ChevronUp size={13} className="text-[var(--color-primary)]" />
+      : <ChevronDown size={13} className="text-[var(--color-primary)]" />
+  }
+
+  const SortHeader = ({ sortKey, children, align = 'left', className = '' }: {
+    sortKey: HoldingsSortKey
+    children: string
+    align?: 'left' | 'right'
+    className?: string
+  }) => (
+    <th className={`px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide ${align === 'right' ? 'text-right' : 'text-left'} ${className}`}>
+      <button
+        type="button"
+        onClick={() => setHoldingsSort(sortKey)}
+        className={`inline-flex items-center gap-1 transition hover:text-gray-900 ${align === 'right' ? 'justify-end' : 'justify-start'}`}
+      >
+        {children}
+        {sortIcon(sortKey)}
+      </button>
+    </th>
+  )
 
   return (
     <div>
@@ -111,27 +170,27 @@ export default function Dashboard() {
             <p className="text-xs text-gray-400 mt-0.5">Sum of all wallet balances across house &amp; client accounts</p>
           </div>
           <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full border border-gray-200">
-            {wallets.length} wallets · {holdingsRows.length} currencies
+            {wallets.length} wallets · {sortedHoldingsRows.length} currencies
           </span>
         </div>
 
-        {holdingsRows.length === 0 ? (
+        {sortedHoldingsRows.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-10">No wallets found</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Currency</th>
-                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Balance</th>
-                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">House</th>
-                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Clients</th>
+                  <SortHeader sortKey="currency">Currency</SortHeader>
+                  <SortHeader sortKey="total" align="right">Total Balance</SortHeader>
+                  <SortHeader sortKey="house" align="right" className="hidden md:table-cell">House</SortHeader>
+                  <SortHeader sortKey="clients" align="right" className="hidden md:table-cell">Clients</SortHeader>
                   <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Distribution</th>
-                  <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Wallets</th>
+                  <SortHeader sortKey="walletCount" align="right" className="hidden sm:table-cell">Wallets</SortHeader>
                 </tr>
               </thead>
               <tbody>
-                {holdingsRows.map((row, idx) => {
+                {sortedHoldingsRows.map((row, idx) => {
                   const houseRatio  = row.total > 0 ? (row.house   / row.total) * 100 : 0
                   const clientRatio = row.total > 0 ? (row.clients / row.total) * 100 : 0
                   const symbol = row.currency?.symbol ?? ''
@@ -140,15 +199,7 @@ export default function Dashboard() {
                     <tr key={row.ticker} className={`border-b border-gray-50 hover:bg-gray-50 transition ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
                       {/* Currency */}
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
-                            <span className="text-xs font-bold text-[var(--color-primary)]">{symbol || row.ticker.slice(0, 2)}</span>
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{row.ticker}</p>
-                            <p className="text-xs text-gray-400">{row.currency?.name ?? ''}</p>
-                          </div>
-                        </div>
+                        <p className="font-semibold text-gray-900">{row.currency?.name || row.ticker}</p>
                       </td>
                       {/* Total */}
                       <td className="px-5 py-3 text-right">

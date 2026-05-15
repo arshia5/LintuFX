@@ -63,7 +63,7 @@ export default function Dashboard() {
   const pairData = Object.entries(pairCounts).map(([name, value]) => ({ name, value })).slice(0, 6)
 
   // Recent orders (last 7)
-  const recentOrders = [...orders].sort((a: OrderRead, b: OrderRead) =>
+  const recentOrders = [...activeOrders].sort((a: OrderRead, b: OrderRead) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   ).slice(0, 7)
 
@@ -245,8 +245,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Total Orders"
-          value={orders.length}
-          sub={`${activeOrders.length} active`}
+          value={activeOrders.length}
+          sub="active orders"
           icon={<ShoppingCart size={20} />}
           color="blue"
         />

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { listEventLogs, listUsers } from '../api'
@@ -36,6 +36,54 @@ function humanEntityType(t: string) {
   return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+function humanFieldName(key: string) {
+  const labels: Record<string, string> = {
+    amount_in: 'Amount in',
+    amount_out: 'Amount out',
+    amount_from: 'Amount from',
+    amount_to: 'Amount to',
+    balance_before: 'Balance before',
+    balance_after: 'Balance after',
+    amount_delta: 'Amount change',
+    client_id: 'Client',
+    house_id: 'House account',
+    user_id: 'User',
+    created_by_user_id: 'Created by',
+    updated_by_user_id: 'Updated by',
+    voided_by_user_id: 'Voided by',
+    currency_id: 'Currency',
+    currency_in_id: 'Currency in',
+    currency_out_id: 'Currency out',
+    currency_from_id: 'Currency from',
+    currency_to_id: 'Currency to',
+    exchange_rate: 'Exchange rate',
+    order_type: 'Order type',
+    voided_at: 'Voided at',
+    created_at: 'Created at',
+    updated_at: 'Updated at',
+    void_reason: 'Void reason',
+  }
+  return labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function detailSectionTitle(key: string) {
+  const labels: Record<string, string> = {
+    payload: 'Submitted values',
+    after: 'Saved record',
+    before: 'Before',
+    wallet: 'Wallet',
+    adjustment: 'Adjustment',
+    voided_before: 'Voided record before',
+    voided_after: 'Voided record after',
+    correction: 'Correction record',
+  }
+  return labels[key] ?? humanFieldName(key)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
 export default function EventLogs() {
   const [expanded, setExpanded] = useState<number | null>(null)
 
@@ -47,6 +95,80 @@ export default function EventLogs() {
 
   const userMap: Record<number, UserRead> = {}
   users.forEach((u: UserRead) => { userMap[u.id] = u })
+  const userName = (userId: number | null | undefined) => {
+    if (userId == null) return 'System'
+    const user = userMap[userId]
+    if (!user) return `User #${userId}`
+    return `${user.name}${user.surname ? ` ${user.surname}` : ''}`
+  }
+
+  const formatDetailValue = (key: string, value: unknown): ReactNode => {
+    if (key === 'password_hash') return <span className="text-gray-400 italic">Hidden</span>
+    if (value === null || value === undefined || value === '') return <span className="text-gray-300 italic">Empty</span>
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+    if (typeof value === 'number' && ['client_id', 'house_id', 'user_id', 'created_by_user_id', 'updated_by_user_id', 'voided_by_user_id'].includes(key)) {
+      return `${userName(value)} (#${value})`
+    }
+    if (typeof value === 'number' && key.endsWith('_id')) return `#${value}`
+    if (typeof value === 'string') {
+      if (['created_at', 'updated_at', 'voided_at'].includes(key)) return fmtDate(value)
+      return value
+    }
+    return JSON.stringify(value)
+  }
+
+  const previewDetail = (details: Record<string, unknown>) => {
+    if (typeof details.reason === 'string' && details.reason) {
+      return `Reason: ${details.reason}`
+    }
+    const source = isRecord(details.payload) ? details.payload : isRecord(details.after) ? details.after : details
+    const entries = Object.entries(source).filter(([key]) => !['password_hash'].includes(key)).slice(0, 3)
+    if (entries.length === 0) return 'No additional details'
+    return entries.map(([key, value]) => {
+      const rendered = formatDetailValue(key, value)
+      const text = typeof rendered === 'string' || typeof rendered === 'number' ? String(rendered) : String(value ?? '')
+      return `${humanFieldName(key)}: ${text.slice(0, 28)}`
+    }).join(' · ')
+  }
+
+  const renderDetailFields = (record: Record<string, unknown>) => (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {Object.entries(record)
+        .filter(([key]) => key !== 'password_hash')
+        .map(([key, value]) => (
+          <div key={key} className="rounded-lg border border-gray-100 bg-white px-3 py-2">
+            <p className="mb-0.5 text-xs font-medium text-gray-400">{humanFieldName(key)}</p>
+            <p className="break-words text-sm text-gray-800">{formatDetailValue(key, value)}</p>
+          </div>
+        ))}
+    </div>
+  )
+
+  const renderHumanDetails = (details: Record<string, unknown>) => {
+    const entries = Object.entries(details)
+    if (entries.length === 0) {
+      return <p className="text-xs text-gray-400 italic">No additional details recorded.</p>
+    }
+    return (
+      <div className="space-y-4">
+        {entries.map(([key, value]) => (
+          <div key={key}>
+            {isRecord(value) ? (
+              <>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{detailSectionTitle(key)}</p>
+                {renderDetailFields(value)}
+              </>
+            ) : (
+              <div className="rounded-lg border border-gray-100 bg-white px-3 py-2">
+                <p className="mb-0.5 text-xs font-medium text-gray-400">{humanFieldName(key)}</p>
+                <p className="break-words text-sm text-gray-800">{formatDetailValue(key, value)}</p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   // Derive unique event_types and entity_types for filter dropdowns
   const eventTypes = useMemo(() => [...new Set(logs.map((l: EventLogRead) => l.event_type))].sort(), [logs])
@@ -117,9 +239,8 @@ export default function EventLogs() {
         const keys = Object.keys(r.details)
         if (keys.length === 0) return <span className="text-xs text-gray-400">—</span>
         return (
-          <span className="text-xs text-gray-500 font-mono truncate max-w-[200px] block">
-            {keys.slice(0, 3).map(k => `${k}: ${String(r.details[k]).slice(0, 12)}`).join(' · ')}
-            {keys.length > 3 ? ` +${keys.length - 3} more` : ''}
+          <span className="block max-w-[260px] truncate text-xs text-gray-500">
+            {previewDetail(r.details)}
           </span>
         )
       }
@@ -141,8 +262,6 @@ export default function EventLogs() {
     },
   ]
 
-  const expandedLog = logs.find((l: EventLogRead) => l.id === expanded)
-
   return (
     <div>
       <PageHeader
@@ -159,42 +278,24 @@ export default function EventLogs() {
           keyFn={r => r.id}
           loading={isLoading}
           emptyMessage="No event logs match your filters"
-        />
-
-        {/* Expanded details panel */}
-        {expandedLog && (
-          <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Badge variant={eventTypeVariant(expandedLog.event_type)}>{humanEventType(expandedLog.event_type)}</Badge>
-                <Badge variant={entityTypeVariant(expandedLog.entity_type)}>{humanEntityType(expandedLog.entity_type)}</Badge>
-                {expandedLog.entity_id != null && (
-                  <span className="text-xs text-gray-500 font-mono">entity #{expandedLog.entity_id}</span>
-                )}
+          onRowClick={row => setExpanded(expanded === row.id ? null : row.id)}
+          expandedRowKey={expanded}
+          renderExpandedRow={log => (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={eventTypeVariant(log.event_type)}>{humanEventType(log.event_type)}</Badge>
+                  <Badge variant={entityTypeVariant(log.entity_type)}>{humanEntityType(log.entity_type)}</Badge>
+                  {log.entity_id != null && (
+                    <span className="text-xs text-gray-500 font-mono">entity #{log.entity_id}</span>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400">{fmtDate(log.created_at)}</span>
               </div>
-              <span className="text-xs text-gray-400">{fmtDate(expandedLog.created_at)}</span>
+              {renderHumanDetails(log.details)}
             </div>
-
-            {Object.keys(expandedLog.details).length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No additional details recorded.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {Object.entries(expandedLog.details).map(([key, value]) => (
-                  <div key={key} className="bg-white rounded-lg border border-gray-100 px-3 py-2">
-                    <p className="text-xs text-gray-400 mb-0.5 font-medium">
-                      {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                    </p>
-                    <p className="text-sm text-gray-800 font-mono break-all">
-                      {value === null ? <span className="text-gray-300 italic">null</span>
-                        : typeof value === 'object' ? JSON.stringify(value)
-                        : String(value)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        />
       </Card>
     </div>
   )

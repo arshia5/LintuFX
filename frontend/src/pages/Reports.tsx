@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FileSpreadsheet } from 'lucide-react'
-import { getClientBalances, getClientDebts, listUsers, listCurrencies, downloadFullActivityReport } from '../api'
-import { PageHeader, Card, Table, Badge, SearchableSelect, Select, Input, Button, Alert } from '../components/ui'
+import { getClientBalances, listUsers, listCurrencies, downloadFullActivityReport } from '../api'
+import { PageHeader, Card, Table, Badge, SearchableSelect, Input, Button, Alert } from '../components/ui'
 import type { ClientBalanceReport, UserRead, CurrencyRead } from '../types'
 import { saveBlobResponse } from '../utils/download'
 import { formatCurrencyNumber } from '../utils/number'
@@ -19,11 +19,9 @@ const positionLabels: Record<string, string> = {
 }
 
 export default function Reports() {
-  const [tab, setTab] = useState<'balances' | 'debts'>('balances')
-  const [direction, setDirection] = useState('all')
+  const [positionTab, setPositionTab] = useState<'client_owes' | 'house_owes'>('client_owes')
   const [clientId, setClientId] = useState<number | null>(null)
   const [currencyId, setCurrencyId] = useState<string | null>(null)
-  const [includeZero, setIncludeZero] = useState(false)
   const today = new Date().toISOString().slice(0, 10)
   const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   const [activityAllTime, setActivityAllTime] = useState(true)
@@ -53,27 +51,17 @@ export default function Reports() {
   ]
 
   const balancesQuery = useQuery({
-    queryKey: ['client-balances', direction, clientId, currencyId, includeZero],
+    queryKey: ['client-balances', positionTab, clientId, currencyId],
     queryFn: () => getClientBalances({
-      direction,
+      direction: positionTab,
       ...(clientId ? { client_id: clientId } : {}),
       ...(currencyId ? { currency_id: currencyId } : {}),
-      include_zero: includeZero,
+      include_zero: false,
     }),
-    enabled: tab === 'balances',
   })
 
-  const debtsQuery = useQuery({
-    queryKey: ['client-debts', clientId, currencyId],
-    queryFn: () => getClientDebts({
-      ...(clientId ? { client_id: clientId } : {}),
-      ...(currencyId ? { currency_id: currencyId } : {}),
-    }),
-    enabled: tab === 'debts',
-  })
-
-  const data: ClientBalanceReport[] = tab === 'balances' ? (balancesQuery.data ?? []) : (debtsQuery.data ?? [])
-  const isLoading = tab === 'balances' ? balancesQuery.isLoading : debtsQuery.isLoading
+  const data: ClientBalanceReport[] = balancesQuery.data ?? []
+  const isLoading = balancesQuery.isLoading
 
   const handleActivityExport = async () => {
     if (!activityAllTime && (!activityFrom || !activityTo)) {
@@ -102,11 +90,6 @@ export default function Reports() {
       setActivityLoading(false)
     }
   }
-
-  // Summary stats
-  const owesHouse = data.filter(r => r.position === 'client_owes_house')
-  const owesClient = data.filter(r => r.position === 'house_owes_client')
-  const settled = data.filter(r => r.position === 'settled')
 
   const columns = [
     {
@@ -189,21 +172,25 @@ export default function Reports() {
         {activityError && <div className="mt-4"><Alert type="error" message={activityError} /></div>}
       </Card>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-        {(['balances', 'debts'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-          >
-            {t === 'balances' ? 'Client Balances' : 'Client Debts'}
-          </button>
-        ))}
+      <div className="mb-6">
+        <div className="flex w-full gap-1 rounded-lg bg-gray-100 p-1 sm:w-fit">
+          {([
+            ['client_owes', 'Client owes house'],
+            ['house_owes', 'House owes client'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setPositionTab(key)}
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition sm:flex-none ${positionTab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-1 gap-3 mb-5 sm:grid-cols-2">
         <SearchableSelect
           options={clientOpts as { value: string | number; label: string; sublabel?: string }[]}
           value={clientId ?? ''}
@@ -218,47 +205,15 @@ export default function Reports() {
           placeholder="All Currencies"
           label="Filter by Currency"
         />
-        {tab === 'balances' && (
-          <Select
-            label="Direction"
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'client_owes', label: 'Client owes house' },
-              { value: 'house_owes', label: 'House owes client' },
-              { value: 'settled', label: 'Settled' },
-            ]}
-            value={direction}
-            onChange={e => setDirection(e.target.value)}
-          />
-        )}
-        {tab === 'balances' && (
-          <div className="flex items-end pb-1">
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input type="checkbox" checked={includeZero} onChange={e => setIncludeZero(e.target.checked)} className="rounded" />
-              Include zero balances
-            </label>
-          </div>
-        )}
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 mb-1">Client owes house</p>
-          <p className="text-2xl font-bold text-red-600">{owesHouse.length}</p>
-          <p className="text-xs text-gray-400 mt-0.5">open positions</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 mb-1">House owes client</p>
-          <p className="text-2xl font-bold text-green-600">{owesClient.length}</p>
-          <p className="text-xs text-gray-400 mt-0.5">open positions</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 mb-1">Settled</p>
-          <p className="text-2xl font-bold text-gray-600">{settled.length}</p>
-          <p className="text-xs text-gray-400 mt-0.5">positions</p>
-        </Card>
-      </div>
+      <Card className="mb-6 p-4">
+        <p className="text-xs text-gray-500 mb-1">
+          {positionTab === 'client_owes' ? 'Client owes house' : 'House owes client'}
+        </p>
+        <p className={`text-2xl font-bold ${positionTab === 'client_owes' ? 'text-red-600' : 'text-green-600'}`}>{data.length}</p>
+        <p className="text-xs text-gray-400 mt-0.5">open positions</p>
+      </Card>
 
       <Card>
         <Table columns={columns} data={data} keyFn={r => `${r.client_id}-${r.currency_id}`} loading={isLoading} emptyMessage="No balance data found" />

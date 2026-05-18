@@ -28,6 +28,7 @@ class Base(DeclarativeBase):
 class UserRole(str, Enum):
     CLIENT = "CLIENT"
     HOUSE = "HOUSE"
+    DEVELOPER = "DEVELOPER"
 
 
 class OrderType(str, Enum):

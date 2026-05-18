@@ -29,19 +29,18 @@ class LoginRequest(SchemaBase):
     password: str = Field(min_length=1, max_length=255)
 
 
-class TokenRead(SchemaBase):
-    access_token: str
-    token_type: Literal["bearer"] = "bearer"
-    expires_in: int
-
-
 class FreshStartRequest(SchemaBase):
-    confirm: Literal["FRESH_START"]
+    confirm: Literal["I approve"]
+
+
+class ClearRecordsRequest(SchemaBase):
+    confirm: Literal["I approve"]
 
 
 class FreshStartRead(SchemaBase):
     deleted: dict[str, int]
     preserved_house_users: int
+    preserved_developer_users: int
 
 
 class CurrencyBase(SchemaBase):
@@ -94,6 +93,13 @@ class UserUpdate(SchemaBase):
 class UserRead(UserBase):
     id: int
     created_at: datetime
+
+
+class TokenRead(SchemaBase):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    user: UserRead
 
 
 class WalletBase(SchemaBase):

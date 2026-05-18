@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
-import { PageHeader, Card, Button, Input, Alert, ConfirmDialog } from '../components/ui'
+import { PageHeader, Card, Button, Input, Alert, Modal } from '../components/ui'
 import { Palette, Type, Layout, Save, FileSpreadsheet, Trash2 } from 'lucide-react'
-import { downloadFullActivityReport, freshStart } from '../api'
+import { clearRecords, downloadFullActivityReport, freshStart } from '../api'
 import { saveBlobResponse } from '../utils/download'
 
 const presetThemes = [
@@ -36,6 +36,12 @@ export default function Settings() {
   const [archiveLoading, setArchiveLoading] = useState(false)
   const [archiveSuccess, setArchiveSuccess] = useState(false)
   const [archiveError, setArchiveError] = useState('')
+  const [archiveConfirm, setArchiveConfirm] = useState('')
+  const [clearOpen, setClearOpen] = useState(false)
+  const [clearLoading, setClearLoading] = useState(false)
+  const [clearSuccess, setClearSuccess] = useState(false)
+  const [clearError, setClearError] = useState('')
+  const [clearConfirm, setClearConfirm] = useState('')
 
   const handleSave = () => {
     setSaved(true)
@@ -47,19 +53,52 @@ export default function Settings() {
   }
 
   const handleArchiveAndClean = async () => {
+    if (archiveConfirm !== 'I approve') {
+      setArchiveError('Type I approve exactly to archive and clean data.')
+      return
+    }
     setArchiveLoading(true)
     setArchiveError('')
     setArchiveSuccess(false)
     try {
       const response = await downloadFullActivityReport()
       saveBlobResponse(response, 'full_activity_report_all_time.xlsx')
-      await freshStart()
-      setArchiveOpen(false)
+      await freshStart('I approve')
+      closeArchiveModal()
       setArchiveSuccess(true)
     } catch {
       setArchiveError('Could not create the full report and clean the database. No cleanup was completed if report generation failed.')
     } finally {
       setArchiveLoading(false)
+    }
+  }
+
+  const closeArchiveModal = () => {
+    setArchiveOpen(false)
+    setArchiveConfirm('')
+  }
+
+  const closeClearModal = () => {
+    setClearOpen(false)
+    setClearConfirm('')
+  }
+
+  const handleClearRecords = async () => {
+    if (clearConfirm !== 'I approve') {
+      setClearError('Type I approve exactly to remove records.')
+      return
+    }
+    setClearLoading(true)
+    setClearError('')
+    setClearSuccess(false)
+    try {
+      await clearRecords('I approve')
+      closeClearModal()
+      setClearSuccess(true)
+    } catch {
+      setClearError('Could not remove records. No cleanup was completed.')
+    } finally {
+      setClearLoading(false)
     }
   }
 
@@ -74,12 +113,22 @@ export default function Settings() {
       )}
       {archiveSuccess && (
         <div className="mb-4">
-          <Alert type="success" message="Full report downloaded and database cleaned. House users were preserved." onClose={() => setArchiveSuccess(false)} />
+          <Alert type="success" message="Full report downloaded and database cleaned. House and developer users were preserved." onClose={() => setArchiveSuccess(false)} />
         </div>
       )}
-      {archiveError && (
+      {archiveError && !archiveOpen && (
         <div className="mb-4">
           <Alert type="error" message={archiveError} onClose={() => setArchiveError('')} />
+        </div>
+      )}
+      {clearSuccess && (
+        <div className="mb-4">
+          <Alert type="success" message="Records removed. House users, developer users, and currencies were preserved." onClose={() => setClearSuccess(false)} />
+        </div>
+      )}
+      {clearError && !clearOpen && (
+        <div className="mb-4">
+          <Alert type="error" message={clearError} onClose={() => setClearError('')} />
         </div>
       )}
 
@@ -301,15 +350,37 @@ export default function Settings() {
               <div className="flex-1">
                 <h2 className="text-sm font-semibold text-red-900">Archive & Fresh Start</h2>
                 <p className="text-xs text-red-700 mt-1">
-                  Downloads an all-time Excel timeline of orders and transfers, then clears database records while preserving house users.
+                  Downloads an all-time Excel timeline of orders and transfers, then clears database records while preserving house and developer users.
                 </p>
                 <Button
                   className="w-full justify-center mt-4"
                   variant="danger"
                   icon={<FileSpreadsheet size={16} />}
-                  onClick={() => setArchiveOpen(true)}
+                  onClick={() => { setArchiveError(''); setArchiveOpen(true) }}
                 >
                   Export Full Report & Clean Data
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6 border-red-100 bg-white">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-100 rounded-lg text-red-600">
+                <Trash2 size={16} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-sm font-semibold text-red-900">Remove Records</h2>
+                <p className="text-xs text-red-700 mt-1">
+                  Clears ledger activity, wallets, audit logs, and client users while keeping house users, developer users, and currencies.
+                </p>
+                <Button
+                  className="w-full justify-center mt-4"
+                  variant="danger"
+                  icon={<Trash2 size={16} />}
+                  onClick={() => { setClearError(''); setClearOpen(true) }}
+                >
+                  Remove Records
                 </Button>
               </div>
             </div>
@@ -317,16 +388,61 @@ export default function Settings() {
         </div>
       </div>
 
-      <ConfirmDialog
-        open={archiveOpen}
-        onClose={() => setArchiveOpen(false)}
-        onConfirm={handleArchiveAndClean}
-        title="Export and Clean Database"
-        message="This will first download a full all-time Excel report, then permanently delete all ledger data, clients, wallets, currencies, and audit logs. House users will be kept."
-        confirmLabel="Export & Clean"
-        variant="danger"
-        loading={archiveLoading}
-      />
+      <Modal open={archiveOpen} onClose={closeArchiveModal} title="Export and Clean Database" size="sm">
+        <div className="space-y-4">
+          {archiveError && <Alert type="error" message={archiveError} onClose={() => setArchiveError('')} />}
+          <p className="text-sm text-gray-600">
+            This first downloads a full all-time Excel report, then permanently deletes ledger data, clients, wallets, currencies, and audit logs. House and developer users will be kept.
+          </p>
+          <Input
+            label='Type "I approve" to continue'
+            value={archiveConfirm}
+            onChange={e => setArchiveConfirm(e.target.value)}
+            placeholder="I approve"
+          />
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
+            <Button variant="secondary" size="sm" type="button" onClick={closeArchiveModal}>Cancel</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              type="button"
+              loading={archiveLoading}
+              disabled={archiveConfirm !== 'I approve'}
+              onClick={handleArchiveAndClean}
+            >
+              Export & Clean
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={clearOpen} onClose={closeClearModal} title="Remove Records" size="sm">
+        <div className="space-y-4">
+          {clearError && <Alert type="error" message={clearError} onClose={() => setClearError('')} />}
+          <p className="text-sm text-gray-600">
+            This permanently removes ledger records, wallets, audit logs, and client users. House users, developer users, and currencies will be kept.
+          </p>
+          <Input
+            label='Type "I approve" to continue'
+            value={clearConfirm}
+            onChange={e => setClearConfirm(e.target.value)}
+            placeholder="I approve"
+          />
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
+            <Button variant="secondary" size="sm" type="button" onClick={closeClearModal}>Cancel</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              type="button"
+              loading={clearLoading}
+              disabled={clearConfirm !== 'I approve'}
+              onClick={handleClearRecords}
+            >
+              Remove Records
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

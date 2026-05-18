@@ -23,6 +23,7 @@ from .models import (
 )
 from .schemas import (
     BalanceDirection,
+    ClearRecordsRequest,
     ClientBalanceReport,
     CurrencyCreate,
     CurrencyRead,
@@ -54,7 +55,7 @@ from .schemas import (
     VoidRequest,
     normalize_ticker,
 )
-from .auth import require_house_user
+from .auth import require_authenticated_user, require_developer_user, require_house_user
 from .config import get_settings
 from .security import create_access_token, hash_password, verify_password
 from .report_exports import build_client_statement_xlsx, build_full_activity_report_xlsx, date_key
@@ -132,7 +133,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRead:
     user = db.scalar(select(User).where(User.username == payload.username))
     if (
         user is None
-        or user.role != UserRole.HOUSE
+        or user.role not in {UserRole.HOUSE, UserRole.DEVELOPER}
         or not verify_password(payload.password, user.password_hash)
     ):
         log_event(
@@ -146,7 +147,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRead:
         commit_or_409(db, "Failed to log authentication event")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid house credentials",
+            detail="Invalid staff credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -170,6 +171,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRead:
     return TokenRead(
         access_token=token,
         expires_in=int(expires_delta.total_seconds()),
+        user=user,
     )
 
 
@@ -177,11 +179,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRead:
 def fresh_start(
     payload: FreshStartRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_house_user),
+    current_user: User = Depends(require_developer_user),
 ) -> FreshStartRead:
     _ = payload
     preserved_house_users = db.scalar(
         select(func.count()).select_from(User).where(User.role == UserRole.HOUSE)
+    )
+    preserved_developer_users = db.scalar(
+        select(func.count()).select_from(User).where(User.role == UserRole.DEVELOPER)
     )
     delete_order = [
         ("event_logs", delete(EventLog)),
@@ -190,7 +195,7 @@ def fresh_start(
         ("house_exchanges", delete(HouseExchange)),
         ("wallet_adjustments", delete(WalletAdjustment)),
         ("wallets", delete(Wallet)),
-        ("client_users", delete(User).where(User.role != UserRole.HOUSE)),
+        ("client_users", delete(User).where(User.role == UserRole.CLIENT)),
         ("currencies", delete(Currency)),
     ]
 
@@ -204,6 +209,44 @@ def fresh_start(
     return FreshStartRead(
         deleted=deleted,
         preserved_house_users=preserved_house_users or 0,
+        preserved_developer_users=preserved_developer_users or 0,
+    )
+
+
+@router.post("/admin/clear-records", response_model=FreshStartRead, tags=["admin"])
+def clear_records(
+    payload: ClearRecordsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_developer_user),
+) -> FreshStartRead:
+    _ = payload
+    _ = current_user
+    preserved_house_users = db.scalar(
+        select(func.count()).select_from(User).where(User.role == UserRole.HOUSE)
+    )
+    preserved_developer_users = db.scalar(
+        select(func.count()).select_from(User).where(User.role == UserRole.DEVELOPER)
+    )
+    delete_order = [
+        ("event_logs", delete(EventLog)),
+        ("journal_entries", delete(JournalEntry)),
+        ("orders", delete(Order)),
+        ("house_exchanges", delete(HouseExchange)),
+        ("wallet_adjustments", delete(WalletAdjustment)),
+        ("wallets", delete(Wallet)),
+        ("client_users", delete(User).where(User.role == UserRole.CLIENT)),
+    ]
+
+    deleted: dict[str, int] = {}
+    for name, statement in delete_order:
+        result = db.execute(statement.execution_options(synchronize_session=False))
+        deleted[name] = deleted_count(result.rowcount)
+
+    commit_or_409(db, "Record cleanup violates a database constraint")
+    return FreshStartRead(
+        deleted=deleted,
+        preserved_house_users=preserved_house_users or 0,
+        preserved_developer_users=preserved_developer_users or 0,
     )
 
 
@@ -310,8 +353,13 @@ def delete_currency(
 def create_user(
     payload: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_house_user),
+    current_user: User = Depends(require_authenticated_user),
 ) -> User:
+    if payload.role == UserRole.DEVELOPER and current_user.role != UserRole.DEVELOPER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only developer users can create developer users",
+        )
     data = payload.model_dump(exclude={"password"})
     if payload.password:
         data["password_hash"] = hash_password(payload.password)
@@ -355,7 +403,7 @@ def update_user(
     user_id: int,
     payload: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_house_user),
+    current_user: User = Depends(require_authenticated_user),
 ) -> User:
     user = get_user_or_404(db, user_id)
     before = model_snapshot(user)
@@ -364,6 +412,14 @@ def update_user(
         data["password_hash"] = hash_password(payload.password)
 
     if "role" in data and data["role"] != user.role:
+        if (
+            current_user.role != UserRole.DEVELOPER
+            and (data["role"] == UserRole.DEVELOPER or user.role == UserRole.DEVELOPER)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only developer users can manage developer roles",
+            )
         has_nonzero_wallet = db.scalar(
             select(Wallet.id)
             .where(Wallet.user_id == user.id, Wallet.balance != 0)
@@ -414,7 +470,7 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_house_user),
+    current_user: User = Depends(require_authenticated_user),
 ) -> None:
     user = get_user_or_404(db, user_id)
     has_nonzero_wallet = db.scalar(
@@ -1162,7 +1218,9 @@ def list_event_logs(
     actor_user_id: int | None = None,
     page: tuple[int, int] = Depends(pagination),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_developer_user),
 ) -> list[EventLog]:
+    _ = current_user
     skip, limit = page
     stmt = select(EventLog)
     if event_type is not None:

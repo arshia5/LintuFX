@@ -5,11 +5,7 @@ import { getClientBalances, getClientDebts, listUsers, listCurrencies, downloadF
 import { PageHeader, Card, Table, Badge, SearchableSelect, Select, Input, Button, Alert } from '../components/ui'
 import type { ClientBalanceReport, UserRead, CurrencyRead } from '../types'
 import { saveBlobResponse } from '../utils/download'
-import { formatNumber } from '../utils/number'
-
-function fmtAmt(s: string) {
-  return formatNumber(Math.abs(Number(s)), 4)
-}
+import { formatCurrencyNumber } from '../utils/number'
 
 const positionColors: Record<string, 'red' | 'green' | 'gray'> = {
   client_owes_house: 'red',
@@ -38,6 +34,10 @@ export default function Reports() {
 
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => listUsers() })
   const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => listCurrencies() })
+  const currMap: Record<string, CurrencyRead> = {}
+  currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
+  const money = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(Math.abs(Number(value)), currMap[currencyId]?.decimals)
 
   const clientOpts = [
     { value: '', label: 'All Clients' },
@@ -131,7 +131,7 @@ export default function Reports() {
         const isNeg = n < 0
         return (
           <span className={`font-semibold text-sm ${isNeg ? 'text-red-600' : 'text-green-600'}`}>
-            {isNeg ? '−' : '+'}{fmtAmt(r.balance)}
+            {isNeg ? '−' : '+'}{money(r.balance, r.currency_id)}
           </span>
         )
       }

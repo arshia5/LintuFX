@@ -45,7 +45,7 @@ If `CORS_ALLOWED_ORIGINS` is empty and `ALLOWED_IPS` contains bare hosts/IPs, th
 
 ## Authentication
 
-All ledger endpoints require a Bearer token for a `HOUSE` user. Root, health, OpenAPI, and `/auth/login` are public.
+All ledger endpoints require a Bearer token for a staff user (`HOUSE` or `DEVELOPER`). Ledger mutations remain `HOUSE`-only, while developer-only admin actions such as fresh start require `DEVELOPER`. Root, health, OpenAPI, and `/auth/login` are public.
 
 Create a `HOUSE` user with a password, then log in:
 
@@ -62,7 +62,13 @@ curl http://127.0.0.1:8000/users \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-`CLIENT` users cannot log in.
+`CLIENT` users cannot log in. `HOUSE` users cannot create or promote users to `DEVELOPER`; only existing `DEVELOPER` users can do that.
+
+Bootstrap the first developer account from the backend host:
+
+```bash
+./venv/bin/python scripts/upsert_developer_user.py developer_user --name Developer
+```
 
 The API only accepts plain `password` when creating or updating users. Raw `password_hash` input is rejected.
 

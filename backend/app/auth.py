@@ -9,9 +9,10 @@ from .security import decode_access_token
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
+STAFF_ROLES = {UserRole.HOUSE, UserRole.DEVELOPER}
 
 
-def require_house_user(
+def require_authenticated_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -41,9 +42,31 @@ def require_house_user(
         )
 
     user = db.get(User, user_id)
-    if not user or user.role != UserRole.HOUSE:
+    if not user or user.role not in STAFF_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="HOUSE user access required",
+            detail="Staff user access required",
+        )
+    return user
+
+
+def require_house_user(
+    user: User = Depends(require_authenticated_user),
+) -> User:
+    if user.role not in STAFF_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="HOUSE or DEVELOPER user access required",
+        )
+    return user
+
+
+def require_developer_user(
+    user: User = Depends(require_authenticated_user),
+) -> User:
+    if user.role != UserRole.DEVELOPER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="DEVELOPER user access required",
         )
     return user

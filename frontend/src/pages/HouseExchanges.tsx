@@ -8,11 +8,7 @@ import { RateCalculator } from '../components/ui/RateCalculator'
 import { VoidModal } from './Orders'
 import type { HouseExchangeRead, UserRead, CurrencyRead, WalletRead } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
-import { formatNumber } from '../utils/number'
-
-function fmtAmt(s: string) {
-  return formatNumber(s, 4)
-}
+import { formatCurrencyNumber, formatNumber } from '../utils/number'
 const fmtDate = fmtDateTimeShort
 
 export default function HouseExchanges() {
@@ -31,6 +27,10 @@ export default function HouseExchanges() {
 
   const userMap: Record<number, UserRead> = {}
   users.forEach((u: UserRead) => { userMap[u.id] = u })
+  const currMap: Record<string, CurrencyRead> = {}
+  currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
+  const money = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(value, currMap[currencyId]?.decimals)
   const houseUsers = users.filter((u: UserRead) => u.role === 'HOUSE')
 
   const createMut = useMutation({
@@ -66,8 +66,8 @@ export default function HouseExchanges() {
       sortValue: (r: HouseExchangeRead) => userMap[r.house_id]?.name ?? '',
     },
     { key: 'pair', header: 'From → To', render: (r: HouseExchangeRead) => <span className="font-mono font-semibold text-sm">{r.currency_from_id} → {r.currency_to_id}</span>, sortValue: (r: HouseExchangeRead) => `${r.currency_from_id}/${r.currency_to_id}` },
-    { key: 'amount_from', header: 'Amount From', render: (r: HouseExchangeRead) => <span className="text-sm">{fmtAmt(r.amount_from)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.amount_from) },
-    { key: 'amount_to', header: 'Amount To', render: (r: HouseExchangeRead) => <span className="text-sm">{fmtAmt(r.amount_to)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.amount_to) },
+    { key: 'amount_from', header: 'Amount From', render: (r: HouseExchangeRead) => <span className="text-sm">{money(r.amount_from, r.currency_from_id)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.amount_from) },
+    { key: 'amount_to', header: 'Amount To', render: (r: HouseExchangeRead) => <span className="text-sm">{money(r.amount_to, r.currency_to_id)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.amount_to) },
     { key: 'exchange_rate', header: 'Rate', render: (r: HouseExchangeRead) => <span className="font-mono text-xs text-gray-600">{formatNumber(r.exchange_rate, 8)}</span>, sortValue: (r: HouseExchangeRead) => parseFloat(r.exchange_rate) },
     { key: 'status', header: 'Status', render: (r: HouseExchangeRead) => <VoidBadge voidedAt={r.voided_at} />, sortValue: (r: HouseExchangeRead) => r.voided_at ?? '' },
     { key: 'created_at', header: 'Date', render: (r: HouseExchangeRead) => <span className="text-xs text-gray-400">{fmtDate(r.created_at)}</span>, sortValue: (r: HouseExchangeRead) => r.created_at },
@@ -210,6 +210,10 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
   const houseWallets = wallets.filter(w => w.user_id === houseId)
   const walletFrom = houseWallets.find(w => w.currency_id === currFrom) ?? null
   const walletTo = houseWallets.find(w => w.currency_id === currTo) ?? null
+  const currencyMap: Record<string, CurrencyRead> = {}
+  currencies.forEach(c => { currencyMap[c.ticker] = c })
+  const formMoney = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(value, currencyMap[currencyId]?.decimals)
 
   // Only show currencies the house account actually has wallets for
   const houseWalletCurrencies = new Set(houseWallets.map(w => w.currency_id))
@@ -267,7 +271,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
               <span className="text-gray-500 font-medium">From balance: </span>
               {currFrom
                 ? walletFrom
-                  ? <span className="text-green-700 font-semibold">{fmtAmt(walletFrom.balance)} {currFrom}</span>
+                  ? <span className="text-green-700 font-semibold">{formMoney(walletFrom.balance, currFrom)} {currFrom}</span>
                   : <span className="text-red-500">No {currFrom} wallet</span>
                 : <span className="text-gray-400">— select currency</span>}
             </div>
@@ -275,7 +279,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
               <span className="text-gray-500 font-medium">To balance: </span>
               {currTo
                 ? walletTo
-                  ? <span className="text-green-700 font-semibold">{fmtAmt(walletTo.balance)} {currTo}</span>
+                  ? <span className="text-green-700 font-semibold">{formMoney(walletTo.balance, currTo)} {currTo}</span>
                   : <span className="text-red-500">No {currTo} wallet</span>
                 : <span className="text-gray-400">— select currency</span>}
             </div>

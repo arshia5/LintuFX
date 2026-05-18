@@ -144,5 +144,8 @@ export const downloadFullActivityReport = (params?: { from?: string; to?: string
     responseType: 'blob',
   })
 
-export const freshStart = () =>
-  apiClient.post('/admin/fresh-start', { confirm: 'FRESH_START' }).then(r => r.data)
+export const freshStart = (confirm: 'I approve') =>
+  apiClient.post('/admin/fresh-start', { confirm }).then(r => r.data)
+
+export const clearRecords = (confirm: 'I approve') =>
+  apiClient.post('/admin/clear-records', { confirm }).then(r => r.data)

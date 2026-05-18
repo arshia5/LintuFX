@@ -1,10 +1,11 @@
-export type UserRole = 'CLIENT' | 'HOUSE'
+export type UserRole = 'CLIENT' | 'HOUSE' | 'DEVELOPER'
 export type OrderType = 'BUY' | 'SELL'
 
 export interface TokenRead {
   access_token: string
   token_type: 'bearer'
   expires_in: number
+  user: UserRead
 }
 
 export interface CurrencyRead {

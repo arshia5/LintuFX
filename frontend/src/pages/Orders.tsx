@@ -11,11 +11,7 @@ import { RateCalculator } from '../components/ui/RateCalculator'
 import type { FilterDef, FilterValues } from '../components/ui'
 import type { OrderRead, UserRead, CurrencyRead, OrderCreate, OrderType } from '../types'
 import { fmtDateTimeShort, nowIstanbulISO, istanbulLocalToUTC } from '../utils/date'
-import { formatNumber } from '../utils/number'
-
-function fmtAmt(s: string) {
-  return formatNumber(s, 4)
-}
+import { formatCurrencyNumber, formatNumber } from '../utils/number'
 const fmtDate = fmtDateTimeShort
 
 export default function Orders() {
@@ -33,6 +29,11 @@ export default function Orders() {
 
   const userMap: Record<number, UserRead> = {}
   users.forEach((u: UserRead) => { userMap[u.id] = u })
+  const currMap: Record<string, CurrencyRead> = {}
+  currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
+
+  const money = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(value, currMap[currencyId]?.decimals)
 
   const createMut = useMutation({
     mutationFn: createOrder,
@@ -118,7 +119,7 @@ export default function Orders() {
     },
     {
       key: 'amount', header: 'Amount In → Out',
-      render: (r: OrderRead) => <span className="text-sm">{fmtAmt(r.amount_in)} → {fmtAmt(r.amount_out)}</span>,
+      render: (r: OrderRead) => <span className="text-sm">{money(r.amount_in, r.currency_in_id)} → {money(r.amount_out, r.currency_out_id)}</span>,
       sortValue: (r: OrderRead) => parseFloat(r.amount_in),
     },
     { key: 'exchange_rate', header: 'Rate', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-600">{formatNumber(r.exchange_rate, 8)}</span>, sortValue: (r: OrderRead) => parseFloat(r.exchange_rate) },

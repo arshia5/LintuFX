@@ -10,10 +10,10 @@ import {
   ChevronDown, ChevronUp, ChevronsUpDown,
 } from 'lucide-react'
 import { listOrders, listHouseExchanges, listJournalEntries, listUsers, getClientBalances, listWallets, listCurrencies } from '../api'
-import { PageHeader, StatCard, Card, Badge } from '../components/ui'
-import type { OrderRead, ClientBalanceReport, WalletRead, CurrencyRead } from '../types'
+import { PageHeader, StatCard, Card, Badge, Modal } from '../components/ui'
+import type { OrderRead, ClientBalanceReport, WalletRead, CurrencyRead, UserRead } from '../types'
 import { fmtDateLabel } from '../utils/date'
-import { formatNumber } from '../utils/number'
+import { formatCurrencyNumber } from '../utils/number'
 
 const COLORS = ['#1a6ee8', '#0f9d58', '#f4b400', '#db4437', '#7b1fa2', '#00acc1']
 
@@ -28,13 +28,10 @@ type HoldingsRow = {
   currency?: CurrencyRead
 }
 
-function fmtAmt(s: string) {
-  return formatNumber(s, 2)
-}
-
 export default function Dashboard() {
   const [holdingsSortKey, setHoldingsSortKey] = useState<HoldingsSortKey>('total')
   const [holdingsSortDir, setHoldingsSortDir] = useState<'asc' | 'desc'>('desc')
+  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null)
   const { data: orders = [], isLoading: ordersLoading } = useQuery({ queryKey: ['orders'], queryFn: () => listOrders() })
   const { data: exchanges = [] } = useQuery({ queryKey: ['house-exchanges'], queryFn: () => listHouseExchanges() })
   const { data: journals = [] } = useQuery({ queryKey: ['journal-entries'], queryFn: () => listJournalEntries() })
@@ -92,8 +89,8 @@ export default function Dashboard() {
   currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
 
   const holdingsByCurrency: Record<string, { total: number; house: number; clients: number; walletCount: number }> = {}
-  const userMap: Record<number, { role: string }> = {}
-  users.forEach((u: { id: number; role: string }) => { userMap[u.id] = u })
+  const userMap: Record<number, UserRead> = {}
+  users.forEach((u: UserRead) => { userMap[u.id] = u })
 
   wallets.forEach((w: WalletRead) => {
     const bal = parseFloat(w.balance)
@@ -123,6 +120,24 @@ export default function Dashboard() {
       return holdingsSortDir === 'asc' ? cmp : -cmp
     })
   }, [holdingsRows, holdingsSortKey, holdingsSortDir])
+
+  const selectedCurrencyInfo = selectedCurrency ? currMap[selectedCurrency] : undefined
+  const selectedCurrencyWallets = selectedCurrency
+    ? wallets
+        .filter((w: WalletRead) => w.currency_id === selectedCurrency && parseFloat(w.balance) !== 0)
+        .sort((a: WalletRead, b: WalletRead) => Math.abs(parseFloat(b.balance)) - Math.abs(parseFloat(a.balance)))
+    : []
+
+  const ownerName = (userId: number) => {
+    const owner = userMap[userId]
+    if (!owner) return `User #${userId}`
+    return `${owner.name}${owner.surname ? ' ' + owner.surname : ''}`
+  }
+
+  const money = (value: string | number, currency?: CurrencyRead) => {
+    const amount = formatCurrencyNumber(value, currency?.decimals)
+    return currency?.symbol ? `${currency.symbol} ${amount}` : amount
+  }
 
   const setHoldingsSort = (key: HoldingsSortKey) => {
     if (holdingsSortKey === key) setHoldingsSortDir(dir => dir === 'asc' ? 'desc' : 'asc')
@@ -192,27 +207,28 @@ export default function Dashboard() {
                 {sortedHoldingsRows.map((row, idx) => {
                   const houseRatio  = row.total > 0 ? (row.house   / row.total) * 100 : 0
                   const clientRatio = row.total > 0 ? (row.clients / row.total) * 100 : 0
-                  const symbol = row.currency?.symbol ?? ''
-                  const fmt = (n: number) => formatNumber(n, 2, 2)
-                  const money = (n: number) => symbol ? `${symbol} ${fmt(n)}` : fmt(n)
                   return (
-                    <tr key={row.ticker} className={`border-b border-gray-50 hover:bg-gray-50 transition ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
+                    <tr
+                      key={row.ticker}
+                      onClick={() => setSelectedCurrency(row.ticker)}
+                      className={`cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition ${idx % 2 === 1 ? 'bg-gray-50/50' : ''}`}
+                    >
                       {/* Currency */}
                       <td className="px-5 py-3">
                         <p className="font-semibold text-gray-900">{row.currency?.name || row.ticker}</p>
                       </td>
                       {/* Total */}
                       <td className="px-5 py-3 text-right">
-                        <p className="font-bold text-gray-900 text-base">{money(row.total)}</p>
+                        <p className="font-bold text-gray-900 text-base">{money(row.total, row.currency)}</p>
                       </td>
                       {/* House */}
                       <td className="px-5 py-3 text-right hidden md:table-cell">
-                        <p className="text-sm font-medium text-purple-700">{money(row.house)}</p>
+                        <p className="text-sm font-medium text-purple-700">{money(row.house, row.currency)}</p>
                         <p className="text-xs text-gray-400">{houseRatio.toFixed(0)}%</p>
                       </td>
                       {/* Clients */}
                       <td className="px-5 py-3 text-right hidden md:table-cell">
-                        <p className="text-sm font-medium text-blue-700">{money(row.clients)}</p>
+                        <p className="text-sm font-medium text-blue-700">{money(row.clients, row.currency)}</p>
                         <p className="text-xs text-gray-400">{clientRatio.toFixed(0)}%</p>
                       </td>
                       {/* Distribution bar */}
@@ -240,6 +256,51 @@ export default function Dashboard() {
           </div>
         )}
       </Card>
+
+      <Modal
+        open={selectedCurrency !== null}
+        onClose={() => setSelectedCurrency(null)}
+        title={`${selectedCurrencyInfo?.name ?? selectedCurrency ?? 'Currency'} Wallets`}
+        size="lg"
+      >
+        {selectedCurrencyWallets.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-400">No non-zero wallets for this currency.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Owner</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Role</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedCurrencyWallets.map((wallet: WalletRead) => {
+                  const owner = userMap[wallet.user_id]
+                  const amount = parseFloat(wallet.balance)
+                  return (
+                    <tr key={wallet.id} className="border-b border-gray-50 last:border-0">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-900">{ownerName(wallet.user_id)}</p>
+                        <p className="text-xs text-gray-400">@{owner?.username ?? `user-${wallet.user_id}`}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={owner?.role === 'HOUSE' ? 'purple' : owner?.role === 'DEVELOPER' ? 'yellow' : 'blue'}>
+                          {owner?.role ?? 'UNKNOWN'}
+                        </Badge>
+                      </td>
+                      <td className={`px-4 py-3 text-right font-mono font-semibold ${amount < 0 ? 'text-red-700' : 'text-gray-900'}`}>
+                        {money(amount, selectedCurrencyInfo)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
 
       {/* Stats row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -357,7 +418,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-sm font-medium text-gray-800">{fmtAmt(o.amount_in)}</p>
+                    <p className="text-sm font-medium text-gray-800">{money(o.amount_in, currMap[o.currency_in_id])}</p>
                     <p className="text-xs text-gray-400">{fmtDate(o.created_at)}</p>
                   </div>
                 </div>

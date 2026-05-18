@@ -7,11 +7,7 @@ import { PageHeader, Button, Table, Modal, Input, Alert, ConfirmDialog, Card, Se
 import type { FilterDef, FilterValues } from '../components/ui'
 import type { WalletRead, WalletAdjustmentRead, UserRead, CurrencyRead, WalletCreate } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
-import { formatNumber } from '../utils/number'
-
-function fmtAmt(s: string) {
-  return formatNumber(s, 4, 2)
-}
+import { formatCurrencyNumber } from '../utils/number'
 const fmtDate = fmtDateTimeShort
 const ALL_CURRENCIES = '__ALL_CURRENCIES__'
 
@@ -38,6 +34,8 @@ export default function Wallets() {
 
   const currMap: Record<string, CurrencyRead> = {}
   currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
+  const money = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(value, currMap[currencyId]?.decimals)
 
   const createMut = useMutation({
     mutationFn: async (data: CreateWalletFormData) => {
@@ -101,7 +99,7 @@ export default function Wallets() {
         const n = parseFloat(r.balance)
         return (
           <span className={`font-semibold ${n < 0 ? 'text-red-600' : n > 0 ? 'text-green-600' : 'text-gray-500'}`}>
-            {fmtAmt(r.balance)}
+            {money(r.balance, r.currency_id)}
           </span>
         )
       }
@@ -133,7 +131,11 @@ export default function Wallets() {
     },
     {
       key: 'role', label: 'Owner Role', type: 'toggle',
-      options: [{ value: 'CLIENT', label: 'Client' }, { value: 'HOUSE', label: 'House' }],
+      options: [
+        { value: 'CLIENT', label: 'Client' },
+        { value: 'HOUSE', label: 'House' },
+        { value: 'DEVELOPER', label: 'Developer' },
+      ],
     },
   ], [])
 
@@ -190,6 +192,7 @@ export default function Wallets() {
         <AdjustModal
           wallet={adjustTarget}
           user={userMap[adjustTarget.user_id]}
+          currency={currMap[adjustTarget.currency_id]}
           onClose={() => setAdjustTarget(null)}
           onSubmit={d => adjustMut.mutate({ id: adjustTarget.id, data: d })}
           loading={adjustMut.isPending}
@@ -201,6 +204,7 @@ export default function Wallets() {
         <HistoryModal
           wallet={historyTarget}
           user={userMap[historyTarget.user_id]}
+          currency={currMap[historyTarget.currency_id]}
           onClose={() => setHistoryTarget(null)}
         />
       )}
@@ -264,8 +268,8 @@ function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies
   )
 }
 
-function AdjustModal({ wallet, user, onClose, onSubmit, loading }: {
-  wallet: WalletRead; user?: UserRead; onClose: () => void
+function AdjustModal({ wallet, user, currency, onClose, onSubmit, loading }: {
+  wallet: WalletRead; user?: UserRead; currency?: CurrencyRead; onClose: () => void
   onSubmit: (d: { balance_after?: number | null; amount_delta?: number | null; reason: string }) => void; loading: boolean
 }) {
   const [mode, setMode] = useState<'delta' | 'set'>('delta')
@@ -286,7 +290,7 @@ function AdjustModal({ wallet, user, onClose, onSubmit, loading }: {
         <div className="bg-gray-50 rounded-lg p-3 text-sm">
           <p className="text-gray-500">Wallet: <span className="font-semibold text-gray-800">#{wallet.id} · {wallet.currency_id}</span></p>
           {user && <p className="text-gray-500 mt-0.5">Owner: <span className="font-semibold text-gray-800">{user.name}{user.surname ? ` ${user.surname}` : ''}</span></p>}
-          <p className="text-gray-500 mt-0.5">Current balance: <span className="font-bold text-[var(--color-primary)]">{fmtAmt(wallet.balance)}</span></p>
+          <p className="text-gray-500 mt-0.5">Current balance: <span className="font-bold text-[var(--color-primary)]">{formatCurrencyNumber(wallet.balance, currency?.decimals)}</span></p>
         </div>
 
         {err && <Alert type="error" message={err} />}
@@ -327,7 +331,7 @@ function AdjustModal({ wallet, user, onClose, onSubmit, loading }: {
   )
 }
 
-function HistoryModal({ wallet, user, onClose }: { wallet: WalletRead; user?: UserRead; onClose: () => void }) {
+function HistoryModal({ wallet, user, currency, onClose }: { wallet: WalletRead; user?: UserRead; currency?: CurrencyRead; onClose: () => void }) {
   const { data: adjustments = [], isLoading } = useQuery({
     queryKey: ['wallet-adjustments', wallet.id],
     queryFn: () => listWalletAdjustments({ wallet_id: wallet.id }),
@@ -337,9 +341,9 @@ function HistoryModal({ wallet, user, onClose }: { wallet: WalletRead; user?: Us
     { key: 'created_at', header: 'Date', render: (r: WalletAdjustmentRead) => <span className="text-xs text-gray-500">{fmtDate(r.created_at)}</span> },
     { key: 'amount_delta', header: 'Delta', render: (r: WalletAdjustmentRead) => {
       const n = parseFloat(r.amount_delta)
-      return <span className={`font-semibold text-sm ${n >= 0 ? 'text-green-600' : 'text-red-500'}`}>{n >= 0 ? '+' : ''}{fmtAmt(r.amount_delta)}</span>
+      return <span className={`font-semibold text-sm ${n >= 0 ? 'text-green-600' : 'text-red-500'}`}>{n >= 0 ? '+' : ''}{formatCurrencyNumber(r.amount_delta, currency?.decimals)}</span>
     }},
-    { key: 'balance_after', header: 'After', render: (r: WalletAdjustmentRead) => <span className="font-medium text-sm">{fmtAmt(r.balance_after)}</span> },
+    { key: 'balance_after', header: 'After', render: (r: WalletAdjustmentRead) => <span className="font-medium text-sm">{formatCurrencyNumber(r.balance_after, currency?.decimals)}</span> },
     { key: 'reason', header: 'Reason', render: (r: WalletAdjustmentRead) => <span className="text-xs text-gray-600 truncate max-w-[180px] block">{r.reason}</span> },
   ]
 
@@ -349,7 +353,7 @@ function HistoryModal({ wallet, user, onClose }: { wallet: WalletRead; user?: Us
         {user && <span className="text-gray-600">{user.name} · </span>}
         <span className="font-semibold text-[var(--color-primary)]">{wallet.currency_id}</span>
         <span className="text-gray-600"> · Current: </span>
-        <span className="font-bold">{fmtAmt(wallet.balance)}</span>
+        <span className="font-bold">{formatCurrencyNumber(wallet.balance, currency?.decimals)}</span>
       </div>
       <Table columns={cols} data={adjustments} keyFn={r => r.id} loading={isLoading} emptyMessage="No adjustments yet" />
     </Modal>

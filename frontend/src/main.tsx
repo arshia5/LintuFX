@@ -1,8 +1,9 @@
 import { StrictMode } from 'react'
+import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Layout from './components/layout/Layout'
 import Login from './pages/Login'
@@ -25,6 +26,12 @@ const queryClient = new QueryClient({
   },
 })
 
+function DeveloperOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  if (user?.role !== 'DEVELOPER') return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
@@ -43,8 +50,8 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/house-exchanges" element={<HouseExchanges />} />
                 <Route path="/journal-entries" element={<JournalEntries />} />
                 <Route path="/reports" element={<Reports />} />
-                <Route path="/event-logs" element={<EventLogs />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route path="/event-logs" element={<DeveloperOnly><EventLogs /></DeveloperOnly>} />
+                <Route path="/settings" element={<DeveloperOnly><Settings /></DeveloperOnly>} />
               </Route>
             </Routes>
           </BrowserRouter>

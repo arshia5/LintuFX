@@ -7,11 +7,7 @@ import { Card, Button, Table, Badge, VoidBadge, Modal, Input, Alert } from '../c
 import type { OrderRead, JournalEntryRead, WalletRead, CurrencyRead } from '../types'
 import { fmtDate, fmtDateTimeShort } from '../utils/date'
 import { saveBlobResponse } from '../utils/download'
-import { formatNumber } from '../utils/number'
-
-function fmtAmt(s: string | number, decimals = 4) {
-  return formatNumber(s, decimals)
-}
+import { formatCurrencyNumber, formatNumber } from '../utils/number'
 
 // ── Export Modal ──────────────────────────────────────────────────────────────
 function ExportModal({ open, onClose, userId, orders, journals }: {
@@ -109,11 +105,15 @@ export default function UserDetail() {
   const currMap: Record<string, CurrencyRead> = {}
   currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
 
+  const money = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(value, currMap[currencyId]?.decimals)
+
   const walletMap: Record<number, WalletRead> = {}
   allWallets.forEach((w: WalletRead) => { walletMap[w.id] = w })
 
   // Wallets belonging to this user
   const userWallets: WalletRead[] = allWallets.filter((w: WalletRead) => w.user_id === userId)
+  const userOrders: OrderRead[] = orders.filter((o: OrderRead) => o.client_id === userId)
 
   // Wallet IDs belonging to this user
   const userWalletIds = new Set(userWallets.map((w: WalletRead) => w.id))
@@ -124,12 +124,12 @@ export default function UserDetail() {
   )
 
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const activeOrders = orders.filter((o: OrderRead) => !o.voided_at).length
+  const activeOrders = userOrders.filter((o: OrderRead) => !o.voided_at).length
   const activeJournals = userJournals.filter((j: JournalEntryRead) => !j.voided_at).length
 
   // Position per currency (from active orders)
   const netPosition: Record<string, number> = {}
-  orders.filter((o: OrderRead) => !o.voided_at).forEach((o: OrderRead) => {
+  userOrders.filter((o: OrderRead) => !o.voided_at).forEach((o: OrderRead) => {
     if (o.order_type === 'BUY') {
       netPosition[o.currency_in_id] = (netPosition[o.currency_in_id] ?? 0) - parseFloat(o.amount_in)
       netPosition[o.currency_out_id] = (netPosition[o.currency_out_id] ?? 0) + parseFloat(o.amount_out)
@@ -146,7 +146,7 @@ export default function UserDetail() {
     { key: 'pair', header: 'Pair', render: (r: OrderRead) => <span className="font-mono text-sm font-semibold">{r.currency_in_id}/{r.currency_out_id}</span>, sortValue: (r: OrderRead) => `${r.currency_in_id}/${r.currency_out_id}` },
     {
       key: 'amount', header: 'In → Out',
-      render: (r: OrderRead) => <span className="text-sm">{fmtAmt(r.amount_in)} <span className="text-gray-400">→</span> {fmtAmt(r.amount_out)}</span>,
+      render: (r: OrderRead) => <span className="text-sm">{money(r.amount_in, r.currency_in_id)} <span className="text-gray-400">→</span> {money(r.amount_out, r.currency_out_id)}</span>,
       sortValue: (r: OrderRead) => parseFloat(r.amount_in),
     },
     { key: 'rate', header: 'Rate', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-600">{formatNumber(r.exchange_rate, 8)}</span>, sortValue: (r: OrderRead) => parseFloat(r.exchange_rate) },
@@ -183,7 +183,7 @@ export default function UserDetail() {
         const isOut = userWalletIds.has(r.from_wallet_id)
         return (
           <span className={`font-semibold text-sm ${isOut ? 'text-red-600' : 'text-green-600'}`}>
-            {isOut ? '−' : '+'}{symbol} {fmtAmt(r.amount)}
+            {isOut ? '−' : '+'}{symbol} {money(r.amount, r.currency_id)}
           </span>
         )
       },
@@ -222,7 +222,7 @@ export default function UserDetail() {
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h1 className="break-words text-xl font-bold text-gray-900">{fullName}</h1>
-              <Badge variant={user.role === 'CLIENT' ? 'blue' : 'purple'}>{user.role}</Badge>
+              <Badge variant={user.role === 'CLIENT' ? 'blue' : user.role === 'DEVELOPER' ? 'yellow' : 'purple'}>{user.role}</Badge>
             </div>
             <p className="text-sm text-gray-400 mt-0.5">@{user.username} · Member since {fmtDate(user.created_at)}</p>
           </div>
@@ -289,7 +289,7 @@ export default function UserDetail() {
                       {c && <span className="text-xs text-gray-400 ml-1.5">{c.name}</span>}
                     </div>
                     <span className="font-mono text-sm font-semibold text-gray-900">
-                      {c?.symbol ? `${c.symbol} ` : ''}{fmtAmt(w.balance, 2)}
+                      {c?.symbol ? `${c.symbol} ` : ''}{money(w.balance, w.currency_id)}
                     </span>
                   </div>
                 )
@@ -301,7 +301,7 @@ export default function UserDetail() {
         {/* Net position */}
         <Card className="p-5 lg:col-span-2">
           <h2 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <TrendingUp size={15} /> Net Position (from all active orders)
+            <TrendingUp size={15} /> Net Position (from this user's active orders)
           </h2>
           {Object.keys(netPosition).length === 0 ? (
             <p className="text-xs text-gray-400 italic">No active orders</p>
@@ -321,7 +321,7 @@ export default function UserDetail() {
                       <div className="flex items-center gap-1">
                         {isPos ? <TrendingUp size={13} className="text-green-600" /> : isNeg ? <TrendingDown size={13} className="text-red-600" /> : <Minus size={13} className="text-gray-400" />}
                         <span className={`font-mono font-semibold text-sm ${isPos ? 'text-green-700' : isNeg ? 'text-red-700' : 'text-gray-600'}`}>
-                          {net > 0 ? '+' : ''}{fmtAmt(String(net), 2)}
+                          {net > 0 ? '+' : ''}{money(net, curr)}
                         </span>
                       </div>
                       <p className={`text-xs mt-0.5 ${isPos ? 'text-green-600' : isNeg ? 'text-red-600' : 'text-gray-400'}`}>
@@ -341,7 +341,7 @@ export default function UserDetail() {
         <div className="border-b border-gray-100 px-4 pt-4">
           <div className="flex gap-0">
             {([
-              { key: 'orders', label: 'Orders', count: orders.length },
+              { key: 'orders', label: 'Orders', count: userOrders.length },
               { key: 'journals', label: 'Journal Entries', count: userJournals.length },
               { key: 'wallets', label: 'Wallets', count: userWallets.length },
             ] as const).map(t => (
@@ -366,7 +366,7 @@ export default function UserDetail() {
         {tab === 'orders' && (
           <Table
             columns={orderColumns}
-            data={orders as OrderRead[]}
+            data={userOrders}
             keyFn={r => r.id}
             loading={ordersLoading}
             emptyMessage="No orders for this client"
@@ -406,7 +406,7 @@ export default function UserDetail() {
                       </div>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
                         <span className="text-base font-normal text-gray-500 mr-1">{c?.symbol ?? ''}</span>
-                        {fmtAmt(w.balance, 2)}
+                        {money(w.balance, w.currency_id)}
                       </p>
                       <p className="text-xs text-gray-400 mt-2">Created {fmtDate(w.created_at)}</p>
                     </div>
@@ -422,7 +422,7 @@ export default function UserDetail() {
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         userId={userId}
-        orders={orders as OrderRead[]}
+        orders={userOrders}
         journals={userJournals}
       />
     </div>

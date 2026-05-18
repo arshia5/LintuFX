@@ -1,22 +1,49 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Trash2, User, Building2, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, User, Building2, ChevronRight, Code2 } from 'lucide-react'
 import { listUsers, createUser, updateUser, deleteUser } from '../api'
 import { PageHeader, Button, Table, Modal, Input, Select, Badge, Alert, ConfirmDialog, Card, FilterBar, initFilters } from '../components/ui'
 import type { FilterDef, FilterValues } from '../components/ui'
 import type { UserRead, UserCreate, UserRole } from '../types'
 import { fmtDate } from '../utils/date'
+import { useAuth } from '../contexts/AuthContext'
 
-const roleOptions = [
+const baseRoleOptions = [
   { value: 'CLIENT', label: 'Client' },
   { value: 'HOUSE', label: 'House' },
 ]
+const developerRoleOption = { value: 'DEVELOPER', label: 'Developer' }
+
+function roleLabel(role: UserRole) {
+  if (role === 'HOUSE') return 'House'
+  if (role === 'DEVELOPER') return 'Developer'
+  return 'Client'
+}
+
+function roleBadge(role: UserRole) {
+  if (role === 'HOUSE') return 'purple'
+  if (role === 'DEVELOPER') return 'yellow'
+  return 'blue'
+}
+
+function RoleIcon({ role }: { role: UserRole }) {
+  if (role === 'HOUSE') return <Building2 size={13} className="text-purple-500" />
+  if (role === 'DEVELOPER') return <Code2 size={13} className="text-yellow-600" />
+  return <User size={13} className="text-blue-500" />
+}
+
+function avatarClass(role: UserRole) {
+  if (role === 'HOUSE') return 'bg-purple-500'
+  if (role === 'DEVELOPER') return 'bg-yellow-500'
+  return 'bg-[var(--color-primary)]'
+}
 
 export default function Users() {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { user: currentUser } = useAuth()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<UserRead | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<UserRead | null>(null)
@@ -31,7 +58,7 @@ export default function Users() {
     { key: 'search', label: 'Name', type: 'text', placeholder: 'Search by name or username...' },
     {
       key: 'role', label: 'Role', type: 'toggle',
-      options: [{ value: 'CLIENT', label: 'Client' }, { value: 'HOUSE', label: 'House' }],
+      options: [...baseRoleOptions, developerRoleOption],
     },
   ], [])
 
@@ -73,7 +100,7 @@ export default function Users() {
       key: 'name', header: 'Name',
       render: (r: UserRead) => (
         <div className="flex items-center gap-2.5">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold ${r.role === 'HOUSE' ? 'bg-purple-500' : 'bg-[var(--color-primary)]'}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold ${avatarClass(r.role)}`}>
             {r.name.charAt(0).toUpperCase()}
           </div>
           <div>
@@ -88,8 +115,8 @@ export default function Users() {
       key: 'role', header: 'Role',
       render: (r: UserRead) => (
         <div className="flex items-center gap-1.5">
-          {r.role === 'HOUSE' ? <Building2 size={13} className="text-purple-500" /> : <User size={13} className="text-blue-500" />}
-          <Badge variant={r.role === 'HOUSE' ? 'purple' : 'blue'}>{r.role === 'HOUSE' ? 'House' : 'Client'}</Badge>
+          <RoleIcon role={r.role} />
+          <Badge variant={roleBadge(r.role)}>{roleLabel(r.role)}</Badge>
         </div>
       ),
       sortValue: (r: UserRead) => r.role,
@@ -139,6 +166,7 @@ export default function Users() {
         onSubmit={data => createMut.mutate(data as UserCreate)}
         loading={createMut.isPending}
         title="New User"
+        canSelectDeveloper={currentUser?.role === 'DEVELOPER'}
       />
 
       {editTarget && (
@@ -149,6 +177,7 @@ export default function Users() {
           onSubmit={data => updateMut.mutate({ id: editTarget.id, data })}
           loading={updateMut.isPending}
           title={`Edit ${editTarget.name}`}
+          canSelectDeveloper={currentUser?.role === 'DEVELOPER' || editTarget.role === 'DEVELOPER'}
         />
       )}
 
@@ -165,20 +194,29 @@ export default function Users() {
   )
 }
 
-function UserModal({ open, user, onClose, onSubmit, loading, title }: {
-  open: boolean; user?: UserRead; onClose: () => void; onSubmit: (d: Partial<UserCreate>) => void; loading: boolean; title: string
+function UserModal({ open, user, onClose, onSubmit, loading, title, canSelectDeveloper }: {
+  open: boolean; user?: UserRead; onClose: () => void; onSubmit: (d: Partial<UserCreate>) => void; loading: boolean; title: string; canSelectDeveloper: boolean
 }) {
-  const { register, handleSubmit, reset } = useForm({
+  const roleOptions = canSelectDeveloper ? [...baseRoleOptions, developerRoleOption] : baseRoleOptions
+  const { register, handleSubmit, reset, watch, setValue } = useForm({
     defaultValues: { role: user?.role ?? 'CLIENT', username: user?.username ?? '', name: user?.name ?? '', surname: user?.surname ?? '', password: '' }
   })
+  const selectedRole = watch('role')
+  const showPassword = selectedRole === 'HOUSE' || selectedRole === 'DEVELOPER'
+
+  useEffect(() => {
+    if (!showPassword) setValue('password', '')
+  }, [showPassword, setValue])
+
   const close = () => { reset(); onClose() }
   const submit = (d: { role: string; username: string; name: string; surname: string; password: string }) => {
+    const isStaffRole = d.role === 'HOUSE' || d.role === 'DEVELOPER'
     onSubmit({
       role: d.role as UserCreate['role'],
       username: d.username,
       name: d.name,
       surname: d.surname.trim() || null,
-      password: d.password.trim() || null,
+      password: isStaffRole ? d.password.trim() || null : null,
     })
   }
   return (
@@ -190,7 +228,9 @@ function UserModal({ open, user, onClose, onSubmit, loading, title }: {
           <Input label="Last Name" placeholder="Doe" {...register('surname')} />
         </div>
         <Input label="Username *" placeholder="johndoe" {...register('username')} />
-        <Input label={user ? 'New Password (leave blank to keep)' : 'Password'} type="password" placeholder="••••••••" {...register('password')} />
+        {showPassword && (
+          <Input label={user ? 'New Password (leave blank to keep)' : 'Password'} type="password" placeholder="••••••••" {...register('password')} />
+        )}
         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" type="button" onClick={close}>Cancel</Button>
           <Button size="sm" type="submit" loading={loading}>{user ? 'Save Changes' : 'Create User'}</Button>

@@ -24,3 +24,11 @@ export function formatNumber(value: string | number, maximumFractionDigits = 4, 
     maximumFractionDigits,
   }).format(parsed)
 }
+
+export function formatCurrencyNumber(
+  value: string | number,
+  decimals: number | null | undefined,
+): string {
+  const resolvedDecimals = Math.max(0, Math.min(18, decimals ?? 4))
+  return formatNumber(value, resolvedDecimals, resolvedDecimals)
+}

@@ -23,10 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await apiLogin(username, password)
     setToken(data.access_token)
     localStorage.setItem('fx_token', data.access_token)
-    // Store minimal user info from username
-    const fakeUser = { username, name: username, id: 0, role: 'HOUSE' as const, surname: null, created_at: new Date().toISOString() }
-    setUser(fakeUser)
-    localStorage.setItem('fx_user', JSON.stringify(fakeUser))
+    setUser(data.user)
+    localStorage.setItem('fx_user', JSON.stringify(data.user))
   }
 
   const logout = () => {

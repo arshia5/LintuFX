@@ -42,6 +42,15 @@ def fmt_money(value: object, decimals: int = 2) -> str:
     return f"{float(value):,.{decimals}f}"
 
 
+def fmt_currency_money(value: object, currency: Currency | None) -> str:
+    return fmt_money(value, currency.decimals if currency else 4)
+
+
+def money_number_format(currency: Currency | None) -> str:
+    decimals = currency.decimals if currency else 4
+    return "#,##0" if decimals == 0 else f"#,##0.{''.join('0' for _ in range(decimals))}"
+
+
 def solid_fill(hex_color: str) -> PatternFill:
     return PatternFill(fill_type="solid", fgColor=argb(hex_color))
 
@@ -90,8 +99,8 @@ def build_client_statement_xlsx(
                     f"{out_curr.name if out_curr else order.currency_out_id} "
                     f"@ {float(order.exchange_rate):.4f}"
                 ),
-                "sent": f"{fmt_money(order.amount_in)} {order.currency_in_id}",
-                "received": f"{fmt_money(order.amount_out)} {order.currency_out_id}",
+                "sent": f"{fmt_currency_money(order.amount_in, in_curr)} {order.currency_in_id}",
+                "received": f"{fmt_currency_money(order.amount_out, out_curr)} {order.currency_out_id}",
                 "note": order.description or "",
                 "status": "Voided" if order.voided_at else "Active",
                 "voided": bool(order.voided_at),
@@ -108,8 +117,8 @@ def build_client_statement_xlsx(
                 "category": "Transfer",
                 "type": "Sent" if is_out else "Received",
                 "description": f"{currency.name if currency else entry.currency_id} transfer",
-                "sent": f"{fmt_money(entry.amount)} {entry.currency_id}" if is_out else "",
-                "received": "" if is_out else f"{fmt_money(entry.amount)} {entry.currency_id}",
+                "sent": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}" if is_out else "",
+                "received": "" if is_out else f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
                 "note": entry.description or "",
                 "status": "Voided" if entry.voided_at else "Active",
                 "voided": bool(entry.voided_at),
@@ -233,7 +242,7 @@ def build_client_statement_xlsx(
                 fill=fill,
                 border=all_borders(),
                 horizontal="right",
-                number_format="#,##0.00",
+                number_format=money_number_format(currency),
             )
             ws.row_dimensions[row].height = 18
             row += 1
@@ -398,8 +407,8 @@ def build_full_activity_report_xlsx(
                     f"{out_curr.name if out_curr else order.currency_out_id} "
                     f"@ {float(order.exchange_rate):.4f}"
                 ),
-                "sent": f"{fmt_money(order.amount_in)} {order.currency_in_id}",
-                "received": f"{fmt_money(order.amount_out)} {order.currency_out_id}",
+                "sent": f"{fmt_currency_money(order.amount_in, in_curr)} {order.currency_in_id}",
+                "received": f"{fmt_currency_money(order.amount_out, out_curr)} {order.currency_out_id}",
                 "note": order.description or "",
                 "status": "Voided" if order.voided_at else "Active",
                 "voided": bool(order.voided_at),
@@ -421,8 +430,8 @@ def build_full_activity_report_xlsx(
                     f"{to_curr.name if to_curr else exchange.currency_to_id} "
                     f"@ {float(exchange.exchange_rate):.4f}"
                 ),
-                "sent": f"{fmt_money(exchange.amount_from)} {exchange.currency_from_id}",
-                "received": f"{fmt_money(exchange.amount_to)} {exchange.currency_to_id}",
+                "sent": f"{fmt_currency_money(exchange.amount_from, from_curr)} {exchange.currency_from_id}",
+                "received": f"{fmt_currency_money(exchange.amount_to, to_curr)} {exchange.currency_to_id}",
                 "note": exchange.description or "",
                 "status": "Voided" if exchange.voided_at else "Active",
                 "voided": bool(exchange.voided_at),
@@ -439,8 +448,8 @@ def build_full_activity_report_xlsx(
                 "party": f"{wallet_user_label(entry.from_wallet_id)} → {wallet_user_label(entry.to_wallet_id)}",
                 "type": entry.currency_id,
                 "description": f"{currency.name if currency else entry.currency_id} transfer",
-                "sent": f"{fmt_money(entry.amount)} {entry.currency_id}",
-                "received": f"{fmt_money(entry.amount)} {entry.currency_id}",
+                "sent": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
+                "received": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
                 "note": entry.description or "",
                 "status": "Voided" if entry.voided_at else "Active",
                 "voided": bool(entry.voided_at),

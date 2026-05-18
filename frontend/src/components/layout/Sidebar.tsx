@@ -57,9 +57,13 @@ export default function Sidebar() {
     logout()
   }
 
+  const visibleNav = user?.role === 'DEVELOPER'
+    ? nav
+    : nav.filter(item => item.to !== '/settings' && item.to !== '/event-logs')
+
   const navItems = (isMobile = false) => (
     <nav className="flex-1 py-3 overflow-y-auto">
-      {nav.map(({ to, label, icon: Icon }) => (
+      {visibleNav.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}

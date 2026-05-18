@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .api import public_router, router
-from .auth import require_house_user
+from .auth import require_authenticated_user
 from .config import get_settings
 
 
@@ -41,4 +41,4 @@ async def allowed_ip_middleware(request: Request, call_next):
 
 
 app.include_router(public_router)
-app.include_router(router, dependencies=[Depends(require_house_user)])
+app.include_router(router, dependencies=[Depends(require_authenticated_user)])

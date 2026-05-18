@@ -8,11 +8,7 @@ import { VoidModal } from './Orders'
 import type { JournalEntryRead, WalletRead, CurrencyRead, UserRead } from '../types'
 
 import { fmtDateTimeShort, nowIstanbulISO, istanbulLocalToUTC } from '../utils/date'
-import { formatNumber } from '../utils/number'
-
-function fmtAmt(s: string) {
-  return formatNumber(s, 4)
-}
+import { formatCurrencyNumber } from '../utils/number'
 const fmtDate = fmtDateTimeShort
 
 export default function JournalEntries() {
@@ -36,6 +32,8 @@ export default function JournalEntries() {
 
   const currMap: Record<string, CurrencyRead> = {}
   currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
+  const money = (value: string | number, currencyId: string) =>
+    formatCurrencyNumber(value, currMap[currencyId]?.decimals)
 
   function walletUser(id: number): UserRead | null {
     const w = walletMap[id]
@@ -138,7 +136,7 @@ export default function JournalEntries() {
         return (
           <div>
             <span className="font-semibold text-[var(--color-primary)] text-sm">{symbol}</span>
-            <span className="font-semibold text-gray-900 ml-0.5">{fmtAmt(r.amount)}</span>
+            <span className="font-semibold text-gray-900 ml-0.5">{money(r.amount, r.currency_id)}</span>
           </div>
         )
       },
@@ -257,6 +255,10 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
   // Resolve wallet IDs from user + currency
   const resolvedFromWallet = wallets.find(w => w.user_id === fromUser && w.currency_id === currencyId)
   const resolvedToWallet = wallets.find(w => w.user_id === toUser && w.currency_id === currencyId)
+  const currencyMap: Record<string, CurrencyRead> = {}
+  currencies.forEach(c => { currencyMap[c.ticker] = c })
+  const formMoney = (value: string | number, currency: string) =>
+    formatCurrencyNumber(value, currencyMap[currency]?.decimals)
 
   const submit = () => {
     if (!fromUser || !toUser) { setErr('Both people are required'); return }
@@ -316,13 +318,13 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
             <div>
               <span className="font-medium text-gray-600">From wallet: </span>
               {resolvedFromWallet
-                ? <span className="text-green-700">#{resolvedFromWallet.id} · balance {fmtAmt(resolvedFromWallet.balance)}</span>
+                ? <span className="text-green-700">#{resolvedFromWallet.id} · balance {formMoney(resolvedFromWallet.balance, currencyId)}</span>
                 : <span className="text-red-500">No {currencyId} wallet found</span>}
             </div>
             <div>
               <span className="font-medium text-gray-600">To wallet: </span>
               {resolvedToWallet
-                ? <span className="text-green-700">#{resolvedToWallet.id} · balance {fmtAmt(resolvedToWallet.balance)}</span>
+                ? <span className="text-green-700">#{resolvedToWallet.id} · balance {formMoney(resolvedToWallet.balance, currencyId)}</span>
                 : <span className="text-red-500">No {currencyId} wallet found</span>}
             </div>
           </div>

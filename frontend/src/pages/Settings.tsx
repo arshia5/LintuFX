@@ -92,11 +92,13 @@ export default function Settings() {
     setClearError('')
     setClearSuccess(false)
     try {
+      const response = await downloadFullActivityReport()
+      saveBlobResponse(response, 'full_activity_report_all_time.xlsx')
       await clearRecords('I approve')
       closeClearModal()
       setClearSuccess(true)
     } catch {
-      setClearError('Could not remove records. No cleanup was completed.')
+      setClearError('Could not create the full report and remove records. No cleanup was completed if report generation failed.')
     } finally {
       setClearLoading(false)
     }
@@ -372,7 +374,7 @@ export default function Settings() {
               <div className="flex-1">
                 <h2 className="text-sm font-semibold text-red-900">Remove Records</h2>
                 <p className="text-xs text-red-700 mt-1">
-                  Clears ledger activity, wallets, audit logs, and client users while keeping house users, developer users, and currencies.
+                  Downloads a full all-time activity report, then clears ledger activity, wallets, audit logs, and client users while keeping house users, developer users, and currencies.
                 </p>
                 <Button
                   className="w-full justify-center mt-4"
@@ -420,7 +422,7 @@ export default function Settings() {
         <div className="space-y-4">
           {clearError && <Alert type="error" message={clearError} onClose={() => setClearError('')} />}
           <p className="text-sm text-gray-600">
-            This permanently removes ledger records, wallets, audit logs, and client users. House users, developer users, and currencies will be kept.
+            This first downloads a full all-time activity report, then permanently removes ledger records, wallets, audit logs, and client users. House users, developer users, and currencies will be kept.
           </p>
           <Input
             label='Type "I approve" to continue'
@@ -438,7 +440,7 @@ export default function Settings() {
               disabled={clearConfirm !== 'I approve'}
               onClick={handleClearRecords}
             >
-              Remove Records
+              Export & Remove Records
             </Button>
           </div>
         </div>

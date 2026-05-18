@@ -1,4 +1,4 @@
-import { forwardRef, ReactNode, useState, useRef, useEffect, useMemo } from 'react'
+import { Fragment, forwardRef, ReactNode, useState, useRef, useEffect, useMemo } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown, X, Loader2, AlertCircle, CheckCircle, Info } from 'lucide-react'
 import { formatNumericInput, stripNumberFormatting } from '../../utils/number'
 export { FilterBar, initFilters } from './FilterBar'
@@ -263,11 +263,12 @@ interface ModalProps {
   title: string
   children: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  mobilePosition?: 'bottom' | 'center'
 }
 
 const modalSizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl' }
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', mobilePosition = 'bottom' }: ModalProps) {
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden'
     else document.body.style.overflow = ''
@@ -276,10 +277,16 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
 
   if (!open) return null
 
+  const shellPosition =
+    mobilePosition === 'center'
+      ? 'items-center justify-center p-4'
+      : 'items-end justify-center p-0 sm:items-center sm:p-4'
+  const panelRadius = mobilePosition === 'center' ? 'rounded-xl' : 'rounded-t-2xl sm:rounded-xl'
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div className={`fixed inset-0 z-50 flex ${shellPosition}`}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative flex max-h-[92dvh] w-full flex-col ${modalSizes[size]} bg-white rounded-t-2xl shadow-2xl sm:rounded-xl`}>
+      <div className={`relative flex max-h-[92dvh] w-full flex-col ${modalSizes[size]} bg-white ${panelRadius} shadow-2xl`}>
         <div className="flex items-center justify-between gap-3 px-4 py-4 border-b border-gray-100 sm:px-6">
           <h2 className="min-w-0 truncate text-base font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="shrink-0 p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
@@ -309,6 +316,10 @@ interface TableProps<T> {
   loading?: boolean
   emptyMessage?: string
   onRowClick?: (row: T) => void
+  pagination?: boolean
+  pageSize?: number
+  expandedRowKey?: string | number | null
+  renderExpandedRow?: (row: T) => ReactNode
   /** Default sort column key */
   defaultSortKey?: string
   /** Default sort direction */
@@ -317,10 +328,12 @@ interface TableProps<T> {
 
 export function Table<T>({
   columns, data, keyFn, loading, emptyMessage = 'No data', onRowClick,
+  pagination = false, pageSize = 25, expandedRowKey, renderExpandedRow,
   defaultSortKey, defaultSortDir = 'desc',
 }: TableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(defaultSortKey ?? null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(defaultSortDir)
+  const [page, setPage] = useState(1)
 
   const sorted = useMemo(() => {
     if (!sortKey) return data
@@ -339,59 +352,109 @@ export function Table<T>({
     else { setSortKey(key); setSortDir('desc') }
   }
 
+  useEffect(() => {
+    setPage(1)
+  }, [data, sortKey, sortDir, pageSize])
+
+  const totalPages = pagination ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1
+  const safePage = Math.min(page, totalPages)
+  const visibleRows = pagination
+    ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
+    : sorted
+  const startRow = sorted.length === 0 ? 0 : (safePage - 1) * pageSize + 1
+  const endRow = pagination ? Math.min(safePage * pageSize, sorted.length) : sorted.length
+
   return (
-    <div className="overflow-x-auto overscroll-x-contain">
-      <table className="w-full min-w-max text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            {columns.map(col => (
-              <th
-                key={col.key}
-                className={`whitespace-nowrap px-3 py-3 text-left font-medium text-gray-600 sm:px-4 ${col.className ?? ''} ${col.sortValue ? 'cursor-pointer select-none hover:text-gray-900' : ''}`}
-                onClick={() => col.sortValue && handleSort(col.key)}
-              >
-                <span className="inline-flex items-center gap-1">
-                  {col.header}
-                  {col.sortValue && (
-                    sortKey === col.key
-                      ? sortDir === 'asc'
-                        ? <ChevronUp size={13} className="text-[var(--color-primary)]" />
-                        : <ChevronDown size={13} className="text-[var(--color-primary)]" />
-                      : <ChevronsUpDown size={13} className="text-gray-300" />
-                  )}
-                </span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {loading ? (
-            <tr>
-              <td colSpan={columns.length} className="px-4 py-12 text-center">
-                <Loader2 size={24} className="animate-spin mx-auto text-gray-400" />
-              </td>
+    <div>
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-max text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 bg-gray-50">
+              {columns.map(col => (
+                <th
+                  key={col.key}
+                  className={`whitespace-nowrap px-3 py-3 text-left font-medium text-gray-600 sm:px-4 ${col.className ?? ''} ${col.sortValue ? 'cursor-pointer select-none hover:text-gray-900' : ''}`}
+                  onClick={() => col.sortValue && handleSort(col.key)}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {col.header}
+                    {col.sortValue && (
+                      sortKey === col.key
+                        ? sortDir === 'asc'
+                          ? <ChevronUp size={13} className="text-[var(--color-primary)]" />
+                          : <ChevronDown size={13} className="text-[var(--color-primary)]" />
+                        : <ChevronsUpDown size={13} className="text-gray-300" />
+                    )}
+                  </span>
+                </th>
+              ))}
             </tr>
-          ) : sorted.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="px-4 py-12 text-center text-gray-400">{emptyMessage}</td>
-            </tr>
-          ) : (
-            sorted.map(row => (
-              <tr
-                key={keyFn(row)}
-                onClick={() => onRowClick?.(row)}
-                className={`border-b border-gray-100 hover:bg-gray-50 transition ${onRowClick ? 'cursor-pointer' : ''}`}
-              >
-                {columns.map(col => (
-                  <td key={col.key} className={`whitespace-nowrap px-3 py-3 text-gray-800 sm:px-4 ${col.className ?? ''}`}>
-                    {col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as ReactNode}
-                  </td>
-                ))}
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-12 text-center">
+                  <Loader2 size={24} className="animate-spin mx-auto text-gray-400" />
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : sorted.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-12 text-center text-gray-400">{emptyMessage}</td>
+              </tr>
+            ) : (
+              visibleRows.map(row => {
+                const rowKey = keyFn(row)
+                const isExpanded = expandedRowKey === rowKey
+                return (
+                  <Fragment key={rowKey}>
+                    <tr
+                      onClick={() => onRowClick?.(row)}
+                      className={`border-b border-gray-100 hover:bg-gray-50 transition ${onRowClick ? 'cursor-pointer' : ''}`}
+                    >
+                      {columns.map(col => (
+                        <td key={col.key} className={`whitespace-nowrap px-3 py-3 text-gray-800 sm:px-4 ${col.className ?? ''}`}>
+                          {col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as ReactNode}
+                        </td>
+                      ))}
+                    </tr>
+                    {isExpanded && renderExpandedRow && (
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <td colSpan={columns.length} className="px-4 py-4">
+                          {renderExpandedRow(row)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+      {pagination && !loading && sorted.length > pageSize && (
+        <div className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+          <span>Showing {startRow}-{endRow} of {sorted.length}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="rounded-md border border-gray-200 px-2.5 py-1 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span>Page {safePage} of {totalPages}</span>
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="rounded-md border border-gray-200 px-2.5 py-1 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

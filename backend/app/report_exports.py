@@ -382,8 +382,15 @@ def build_full_activity_report_xlsx(
         user = user_map.get(user_id)
         if not user:
             return str(user_id)
-        full_name = f"{user.name}{' ' + user.surname if user.surname else ''}"
-        return f"{full_name} (@{user.username})"
+        return f"{user.name}{' ' + user.surname if user.surname else ''}"
+
+    def note_with_void(note: str | None, void_reason: str | None) -> str:
+        parts = []
+        if note:
+            parts.append(note)
+        if void_reason:
+            parts.append(f"Void reason: {void_reason}")
+        return " | ".join(parts)
 
     def wallet_user_label(wallet_id: int) -> str:
         wallet = wallet_map.get(wallet_id)
@@ -409,7 +416,7 @@ def build_full_activity_report_xlsx(
                 ),
                 "sent": f"{fmt_currency_money(order.amount_in, in_curr)} {order.currency_in_id}",
                 "received": f"{fmt_currency_money(order.amount_out, out_curr)} {order.currency_out_id}",
-                "note": order.description or "",
+                "note": note_with_void(order.description, order.void_reason),
                 "status": "Voided" if order.voided_at else "Active",
                 "voided": bool(order.voided_at),
             }
@@ -432,7 +439,7 @@ def build_full_activity_report_xlsx(
                 ),
                 "sent": f"{fmt_currency_money(exchange.amount_from, from_curr)} {exchange.currency_from_id}",
                 "received": f"{fmt_currency_money(exchange.amount_to, to_curr)} {exchange.currency_to_id}",
-                "note": exchange.description or "",
+                "note": note_with_void(exchange.description, exchange.void_reason),
                 "status": "Voided" if exchange.voided_at else "Active",
                 "voided": bool(exchange.voided_at),
             }
@@ -450,7 +457,7 @@ def build_full_activity_report_xlsx(
                 "description": f"{currency.name if currency else entry.currency_id} transfer",
                 "sent": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
                 "received": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
-                "note": entry.description or "",
+                "note": note_with_void(entry.description, entry.void_reason),
                 "status": "Voided" if entry.voided_at else "Active",
                 "voided": bool(entry.voided_at),
             }
@@ -607,6 +614,82 @@ def build_full_activity_report_xlsx(
                     wrap_text=col in {"D", "F", "I"},
                 )
             ws.row_dimensions[row].height = 18
+            row += 1
+
+    row += 1
+    ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=10)
+    ws[f"B{row}"] = "NON-ZERO WALLETS"
+    style(
+        f"B{row}",
+        bold=True,
+        size=11,
+        color=C["white"],
+        fill=C["midBg"],
+        border=all_borders(C["midBg"]),
+    )
+    ws.row_dimensions[row].height = 22
+    row += 1
+
+    wallet_headers = [
+        ("B", "Name", "left"),
+        ("C", "Role", "center"),
+        ("D", "Currency", "left"),
+        ("E", "Balance", "right"),
+    ]
+    for col, label, align in wallet_headers:
+        ws[f"{col}{row}"] = label
+        style(
+            f"{col}{row}",
+            bold=True,
+            size=10,
+            color=C["white"],
+            fill=C["darkBg"],
+            border=all_borders(C["darkBg"]),
+            horizontal=align,
+        )
+    ws.row_dimensions[row].height = 20
+    row += 1
+
+    open_wallets = sorted(
+        [wallet for wallet in wallets if wallet.balance != 0],
+        key=lambda wallet: (
+            user_label(wallet.user_id).lower(),
+            wallet.currency_id,
+        ),
+    )
+    if not open_wallets:
+        ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=5)
+        ws[f"B{row}"] = "No non-zero wallets"
+        style(f"B{row}", size=10, color=C["gray"], horizontal="center", border=all_borders())
+        ws.row_dimensions[row].height = 20
+        row += 1
+    else:
+        last_owner = None
+        for index, wallet in enumerate(open_wallets):
+            user = user_map.get(wallet.user_id)
+            currency = currency_map.get(wallet.currency_id)
+            owner = user_label(wallet.user_id)
+            owner_key = owner.lower()
+            show_owner = owner_key != last_owner
+            fill = C["lightBg"] if index % 2 == 1 else C["white"]
+            values = {
+                "B": owner if show_owner else "",
+                "C": user.role.value if show_owner and user else "",
+                "D": currency.name if currency else wallet.currency_id,
+                "E": float(wallet.balance),
+            }
+            for col, value in values.items():
+                ws[f"{col}{row}"] = value
+                style(
+                    f"{col}{row}",
+                    size=9,
+                    fill=fill,
+                    border=all_borders(),
+                    horizontal="right" if col == "E" else "center" if col == "C" else "left",
+                )
+            ws[f"E{row}"].number_format = money_number_format(currency)
+            ws.row_dimensions[row].height = 18
+            last_owner = owner_key
             row += 1
 
     row += 1

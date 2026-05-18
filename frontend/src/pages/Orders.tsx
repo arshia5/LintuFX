@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Ban, Edit3, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
-import { listOrders, createOrder, voidOrder, correctOrder, deleteOrder, listUsers, listCurrencies } from '../api'
+import { Plus, Ban, Edit3, ChevronDown, ChevronUp } from 'lucide-react'
+import { listOrders, createOrder, voidOrder, correctOrder, listUsers, listCurrencies } from '../api'
 import {
   PageHeader, Button, Table, Modal, Input, Select,
-  Alert, ConfirmDialog, Card, Badge, SearchableSelect, VoidBadge,
+  Alert, Card, Badge, SearchableSelect, VoidBadge,
   FilterBar, initFilters,
 } from '../components/ui'
 import { RateCalculator } from '../components/ui/RateCalculator'
@@ -19,7 +19,6 @@ export default function Orders() {
   const [createOpen, setCreateOpen] = useState(false)
   const [voidTarget, setVoidTarget] = useState<OrderRead | null>(null)
   const [correctTarget, setCorrectTarget] = useState<OrderRead | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<OrderRead | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [apiError, setApiError] = useState('')
 
@@ -35,6 +34,13 @@ export default function Orders() {
   const money = (value: string | number, currencyId: string) =>
     formatCurrencyNumber(value, currMap[currencyId]?.decimals)
 
+  const userName = (userId: number | null) => {
+    if (userId === null) return 'System'
+    const user = userMap[userId]
+    if (!user) return `User #${userId}`
+    return `${user.name}${user.surname ? ` ${user.surname}` : ''}`
+  }
+
   const createMut = useMutation({
     mutationFn: createOrder,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); setCreateOpen(false) },
@@ -45,11 +51,6 @@ export default function Orders() {
     mutationFn: ({ id, reason }: { id: number; reason: string }) => voidOrder(id, { reason }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); setVoidTarget(null) },
     onError: (e: { response?: { data?: { detail?: string } } }) => setApiError(e.response?.data?.detail || 'Failed to void order'),
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: deleteOrder,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['orders'] }); setDeleteTarget(null) },
   })
 
   const correctMut = useMutation({
@@ -135,14 +136,10 @@ export default function Orders() {
             <Button size="sm" variant="ghost" icon={<Edit3 size={13} />} onClick={e => { e.stopPropagation(); setCorrectTarget(r) }} />
             <Button size="sm" variant="ghost" icon={<Ban size={13} />} onClick={e => { e.stopPropagation(); setVoidTarget(r) }} className="text-orange-500 hover:bg-orange-50" />
           </>}
-          <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={e => { e.stopPropagation(); setDeleteTarget(r) }} className="text-red-500 hover:bg-red-50" />
         </div>
       )
     },
   ]
-
-  // Expand row with details
-  const expandedOrder = orders.find((o: OrderRead) => o.id === expanded)
 
   return (
     <div>
@@ -153,19 +150,29 @@ export default function Orders() {
       <FilterBar filters={filterDefs} values={filterVals} onChange={setFilterVals} resultCount={filtered.length} />
 
       <Card>
-        <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No orders match your filters" defaultSortKey="created_at" defaultSortDir="desc" />
-        {expandedOrder && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-sm">
+        <Table
+          columns={columns}
+          data={filtered}
+          keyFn={r => r.id}
+          loading={isLoading}
+          emptyMessage="No orders match your filters"
+          defaultSortKey="created_at"
+          defaultSortDir="desc"
+          pagination
+          onRowClick={row => setExpanded(expanded === row.id ? null : row.id)}
+          expandedRowKey={expanded}
+          renderExpandedRow={expandedOrder => (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{expandedOrder.description || '—'}</p></div>
-              <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">#{expandedOrder.created_by_user_id}</p></div>
+              <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">{userName(expandedOrder.created_by_user_id)}</p></div>
               {expandedOrder.voided_at && <>
                 <div><p className="text-xs text-gray-400">Voided at</p><p className="text-red-600">{fmtDate(expandedOrder.voided_at)}</p></div>
+                <div><p className="text-xs text-gray-400">Voided by</p><p className="text-red-600">{userName(expandedOrder.voided_by_user_id)}</p></div>
                 <div><p className="text-xs text-gray-400">Void reason</p><p className="text-red-600">{expandedOrder.void_reason}</p></div>
               </>}
             </div>
-          </div>
-        )}
+          )}
+        />
       </Card>
 
       {/* Create Order */}
@@ -203,15 +210,6 @@ export default function Orders() {
         loading={voidMut.isPending}
       />
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
-        title="Delete Order"
-        message={`Delete order #${deleteTarget?.id}? This cannot be undone.`}
-        confirmLabel="Delete"
-        loading={deleteMut.isPending}
-      />
     </div>
   )
 }
@@ -234,6 +232,8 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
 
   const clientOpts = clients.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username}` }))
   const currOpts = currencies.map(c => ({ value: c.ticker, label: c.name || c.ticker }))
+  const currencyMap: Record<string, CurrencyRead> = {}
+  currencies.forEach(c => { currencyMap[c.ticker] = c })
 
   const submit = () => {
     if (!clientId) { setErr('Client is required'); return }
@@ -275,6 +275,8 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
             setAmountIn={setAmountIn}
             amountOut={amountOut}
             setAmountOut={setAmountOut}
+            amountInDecimals={currencyMap[currIn]?.decimals}
+            amountOutDecimals={currencyMap[currOut]?.decimals}
           />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

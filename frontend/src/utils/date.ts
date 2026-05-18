@@ -60,26 +60,9 @@ export function nowIstanbulISO(): string {
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
 }
 
-/** Convert a datetime-local string (assumed to be in Istanbul time) to UTC ISO string for the API */
+/** Convert a datetime-local string to an API timestamp preserving Istanbul wall-clock time. */
 export function istanbulLocalToUTC(localISO: string): string {
-  // localISO is "YYYY-MM-DDTHH:mm" — treat it as Istanbul wall-clock time
-  // We use Intl to find the UTC offset for that instant in Istanbul
-  const naive = new Date(localISO) // parsed as local browser time
-  // Get Istanbul offset at that moment (in minutes)
-  const sample = new Date(localISO + ':00')
-  const utcStr = sample.toLocaleString('en-US', { timeZone: 'UTC', hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  const istStr = sample.toLocaleString('en-US', { timeZone: TZ, hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-
-  const toMs = (s: string) => {
-    // "MM/DD/YYYY, HH:MM"
-    const [datePart, timePart] = s.split(', ')
-    const [m, d, y] = datePart.split('/')
-    const [h, min] = timePart.split(':')
-    return Date.UTC(Number(y), Number(m) - 1, Number(d), Number(h), Number(min))
-  }
-
-  const offsetMs = toMs(istStr) - toMs(utcStr) // Istanbul is ahead of UTC
-  return new Date(naive.getTime() - offsetMs).toISOString()
+  // Turkey uses fixed UTC+03:00. Preserve the selected Istanbul wall-clock time
+  // instead of parsing the datetime-local value in the browser's local timezone.
+  return `${localISO.length === 16 ? `${localISO}:00` : localISO}+03:00`
 }

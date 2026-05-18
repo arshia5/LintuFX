@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Ban, Edit3, Trash2 } from 'lucide-react'
-import { listJournalEntries, createJournalEntry, voidJournalEntry, correctJournalEntry, deleteJournalEntry, listWallets, listCurrencies, listUsers } from '../api'
-import { PageHeader, Button, Table, Modal, Input, Alert, ConfirmDialog, Card, SearchableSelect, VoidBadge, FilterBar, initFilters } from '../components/ui'
+import { Plus, Ban, Edit3, ChevronDown, ChevronUp } from 'lucide-react'
+import { listJournalEntries, createJournalEntry, voidJournalEntry, correctJournalEntry, listWallets, listCurrencies, listUsers } from '../api'
+import { PageHeader, Button, Table, Modal, Input, Alert, Card, SearchableSelect, VoidBadge, FilterBar, initFilters } from '../components/ui'
 import type { FilterDef, FilterValues } from '../components/ui'
 import { VoidModal } from './Orders'
 import type { JournalEntryRead, WalletRead, CurrencyRead, UserRead } from '../types'
@@ -16,7 +16,7 @@ export default function JournalEntries() {
   const [createOpen, setCreateOpen] = useState(false)
   const [voidTarget, setVoidTarget] = useState<JournalEntryRead | null>(null)
   const [correctTarget, setCorrectTarget] = useState<JournalEntryRead | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<JournalEntryRead | null>(null)
+  const [expanded, setExpanded] = useState<number | null>(null)
   const [apiError, setApiError] = useState('')
 
   const { data: entries = [], isLoading } = useQuery({ queryKey: ['journal-entries'], queryFn: () => listJournalEntries() })
@@ -40,6 +40,13 @@ export default function JournalEntries() {
     return w ? (userMap[w.user_id] ?? null) : null
   }
 
+  const userName = (userId: number | null) => {
+    if (userId === null) return 'System'
+    const user = userMap[userId]
+    if (!user) return `User #${userId}`
+    return `${user.name}${user.surname ? ` ${user.surname}` : ''}`
+  }
+
   const createMut = useMutation({
     mutationFn: createJournalEntry,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['journal-entries'] }); setCreateOpen(false) },
@@ -49,11 +56,6 @@ export default function JournalEntries() {
   const voidMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => voidJournalEntry(id, { reason }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['journal-entries'] }); setVoidTarget(null) },
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: deleteJournalEntry,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['journal-entries'] }); setDeleteTarget(null) },
   })
 
   const correctMut = useMutation({
@@ -148,11 +150,13 @@ export default function JournalEntries() {
     {
       key: 'actions', header: '', render: (r: JournalEntryRead) => (
         <div className="flex gap-1 justify-end">
+          <button onClick={e => { e.stopPropagation(); setExpanded(expanded === r.id ? null : r.id) }} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
+            {expanded === r.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
           {!r.voided_at && <>
             <Button size="sm" variant="ghost" icon={<Edit3 size={13} />} onClick={e => { e.stopPropagation(); setCorrectTarget(r) }} />
             <Button size="sm" variant="ghost" icon={<Ban size={13} />} onClick={e => { e.stopPropagation(); setVoidTarget(r) }} className="text-orange-500 hover:bg-orange-50" />
           </>}
-          <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={e => { e.stopPropagation(); setDeleteTarget(r) }} className="text-red-500 hover:bg-red-50" />
         </div>
       )
     },
@@ -167,7 +171,29 @@ export default function JournalEntries() {
       <FilterBar filters={filterDefs} values={filterVals} onChange={setFilterVals} resultCount={filtered.length} />
 
       <Card>
-        <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No journal entries match your filters" defaultSortKey="created_at" defaultSortDir="desc" />
+        <Table
+          columns={columns}
+          data={filtered}
+          keyFn={r => r.id}
+          loading={isLoading}
+          emptyMessage="No journal entries match your filters"
+          defaultSortKey="created_at"
+          defaultSortDir="desc"
+          pagination
+          onRowClick={row => setExpanded(expanded === row.id ? null : row.id)}
+          expandedRowKey={expanded}
+          renderExpandedRow={entry => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{entry.description || '—'}</p></div>
+              <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">{userName(entry.created_by_user_id)}</p></div>
+              {entry.voided_at && <>
+                <div><p className="text-xs text-gray-400">Voided at</p><p className="text-red-600">{fmtDate(entry.voided_at)}</p></div>
+                <div><p className="text-xs text-gray-400">Voided by</p><p className="text-red-600">{userName(entry.voided_by_user_id)}</p></div>
+                <div><p className="text-xs text-gray-400">Void reason</p><p className="text-red-600">{entry.void_reason}</p></div>
+              </>}
+            </div>
+          )}
+        />
       </Card>
 
       <JournalFormModal
@@ -204,15 +230,6 @@ export default function JournalEntries() {
         loading={voidMut.isPending}
       />
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
-        title="Delete Journal Entry"
-        message={`Delete entry #${deleteTarget?.id}? This cannot be undone.`}
-        confirmLabel="Delete"
-        loading={deleteMut.isPending}
-      />
     </div>
   )
 }

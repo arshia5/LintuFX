@@ -262,6 +262,7 @@ export default function Dashboard() {
         onClose={() => setSelectedCurrency(null)}
         title={`${selectedCurrencyInfo?.name ?? selectedCurrency ?? 'Currency'} Wallets`}
         size="lg"
+        mobilePosition="center"
       >
         {selectedCurrencyWallets.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-400">No non-zero wallets for this currency.</p>

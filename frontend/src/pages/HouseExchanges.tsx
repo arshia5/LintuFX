@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Ban, Edit3, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
-import { listHouseExchanges, createHouseExchange, voidHouseExchange, correctHouseExchange, deleteHouseExchange, listUsers, listCurrencies, listWallets } from '../api'
-import { PageHeader, Button, Table, Modal, Input, Alert, ConfirmDialog, Card, SearchableSelect, VoidBadge, FilterBar, initFilters } from '../components/ui'
+import { Plus, Ban, Edit3, ChevronDown, ChevronUp } from 'lucide-react'
+import { listHouseExchanges, createHouseExchange, voidHouseExchange, correctHouseExchange, listUsers, listCurrencies, listWallets } from '../api'
+import { PageHeader, Button, Table, Modal, Input, Alert, Card, SearchableSelect, VoidBadge, FilterBar, initFilters } from '../components/ui'
 import type { FilterDef, FilterValues } from '../components/ui'
 import { RateCalculator } from '../components/ui/RateCalculator'
 import { VoidModal } from './Orders'
@@ -16,7 +16,6 @@ export default function HouseExchanges() {
   const [createOpen, setCreateOpen] = useState(false)
   const [voidTarget, setVoidTarget] = useState<HouseExchangeRead | null>(null)
   const [correctTarget, setCorrectTarget] = useState<HouseExchangeRead | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<HouseExchangeRead | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
   const [apiError, setApiError] = useState('')
 
@@ -31,6 +30,12 @@ export default function HouseExchanges() {
   currencies.forEach((c: CurrencyRead) => { currMap[c.ticker] = c })
   const money = (value: string | number, currencyId: string) =>
     formatCurrencyNumber(value, currMap[currencyId]?.decimals)
+  const userName = (userId: number | null) => {
+    if (userId === null) return 'System'
+    const user = userMap[userId]
+    if (!user) return `User #${userId}`
+    return `${user.name}${user.surname ? ` ${user.surname}` : ''}`
+  }
   const houseUsers = users.filter((u: UserRead) => u.role === 'HOUSE')
 
   const createMut = useMutation({
@@ -42,11 +47,6 @@ export default function HouseExchanges() {
   const voidMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) => voidHouseExchange(id, { reason }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['house-exchanges'] }); setVoidTarget(null) },
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: deleteHouseExchange,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['house-exchanges'] }); setDeleteTarget(null) },
   })
 
   const correctMut = useMutation({
@@ -81,13 +81,10 @@ export default function HouseExchanges() {
             <Button size="sm" variant="ghost" icon={<Edit3 size={13} />} onClick={e => { e.stopPropagation(); setCorrectTarget(r) }} />
             <Button size="sm" variant="ghost" icon={<Ban size={13} />} onClick={e => { e.stopPropagation(); setVoidTarget(r) }} className="text-orange-500 hover:bg-orange-50" />
           </>}
-          <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={e => { e.stopPropagation(); setDeleteTarget(r) }} className="text-red-500 hover:bg-red-50" />
         </div>
       )
     },
   ]
-
-  const expandedItem = exchanges.find((e: HouseExchangeRead) => e.id === expanded)
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const filterDefs: FilterDef[] = useMemo(() => [
@@ -131,17 +128,29 @@ export default function HouseExchanges() {
       <FilterBar filters={filterDefs} values={filterVals} onChange={setFilterVals} resultCount={filtered.length} />
 
       <Card>
-        <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No exchanges match your filters" defaultSortKey="created_at" defaultSortDir="desc" />
-        {expandedItem && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{expandedItem.description || '—'}</p></div>
-            <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">#{expandedItem.created_by_user_id}</p></div>
-            {expandedItem.voided_at && <>
-              <div><p className="text-xs text-gray-400">Voided at</p><p className="text-red-600">{fmtDate(expandedItem.voided_at)}</p></div>
-              <div><p className="text-xs text-gray-400">Void reason</p><p className="text-red-600">{expandedItem.void_reason}</p></div>
-            </>}
-          </div>
-        )}
+        <Table
+          columns={columns}
+          data={filtered}
+          keyFn={r => r.id}
+          loading={isLoading}
+          emptyMessage="No exchanges match your filters"
+          defaultSortKey="created_at"
+          defaultSortDir="desc"
+          pagination
+          onRowClick={row => setExpanded(expanded === row.id ? null : row.id)}
+          expandedRowKey={expanded}
+          renderExpandedRow={expandedItem => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{expandedItem.description || '—'}</p></div>
+              <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">{userName(expandedItem.created_by_user_id)}</p></div>
+              {expandedItem.voided_at && <>
+                <div><p className="text-xs text-gray-400">Voided at</p><p className="text-red-600">{fmtDate(expandedItem.voided_at)}</p></div>
+                <div><p className="text-xs text-gray-400">Voided by</p><p className="text-red-600">{userName(expandedItem.voided_by_user_id)}</p></div>
+                <div><p className="text-xs text-gray-400">Void reason</p><p className="text-red-600">{expandedItem.void_reason}</p></div>
+              </>}
+            </div>
+          )}
+        />
       </Card>
 
       <ExchangeFormModal
@@ -178,15 +187,6 @@ export default function HouseExchanges() {
         loading={voidMut.isPending}
       />
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
-        title="Delete Exchange"
-        message={`Delete exchange #${deleteTarget?.id}? This cannot be undone.`}
-        confirmLabel="Delete"
-        loading={deleteMut.isPending}
-      />
     </div>
   )
 }
@@ -286,18 +286,20 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Amount From *" type="number" step="any" value={amtFrom} onChange={e => setAmtFrom(e.target.value)} />
           <Input label="Amount To *" type="number" step="any" value={amtTo} onChange={e => setAmtTo(e.target.value)} />
-          <RateCalculator
-            rate={rate}
-            setRate={setRate}
-            amountIn={amtFrom}
-            setAmountIn={setAmtFrom}
-            amountOut={amtTo}
-            setAmountOut={setAmtTo}
-          />
         </div>
+        <RateCalculator
+          rate={rate}
+          setRate={setRate}
+          amountIn={amtFrom}
+          setAmountIn={setAmtFrom}
+          amountOut={amtTo}
+          setAmountOut={setAmtTo}
+          amountInDecimals={currencyMap[currFrom]?.decimals}
+          amountOutDecimals={currencyMap[currTo]?.decimals}
+        />
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">Description</label>
           <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none" />

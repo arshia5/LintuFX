@@ -7,9 +7,10 @@ function parseAmount(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function formatAmount(value: number): string {
+function formatAmount(value: number, decimals = 8): string {
   if (!Number.isFinite(value)) return ''
-  return Number(value.toFixed(8)).toString()
+  const safeDecimals = Math.max(0, Math.min(18, decimals))
+  return Number(value.toFixed(safeDecimals)).toString()
 }
 
 interface RateCalculatorProps {
@@ -20,6 +21,8 @@ interface RateCalculatorProps {
   setAmountIn: (value: string) => void
   amountOut: string
   setAmountOut: (value: string) => void
+  amountInDecimals?: number
+  amountOutDecimals?: number
 }
 
 export function RateCalculator({
@@ -30,6 +33,8 @@ export function RateCalculator({
   setAmountIn,
   amountOut,
   setAmountOut,
+  amountInDecimals = 8,
+  amountOutDecimals = 8,
 }: RateCalculatorProps) {
   const amountInNum = parseAmount(amountIn)
   const amountOutNum = parseAmount(amountOut)
@@ -44,6 +49,7 @@ export function RateCalculator({
     ((amountInNum !== null && !hasAmountOut) || (amountOutNum !== null && !hasAmountIn))
 
   useEffect(() => {
+    if (rate.trim() !== '') return
     if (amountInNum === null || amountOutNum === null || amountInNum === 0 || amountOutNum === 0) return
     const bigger = Math.max(Math.abs(amountInNum), Math.abs(amountOutNum))
     const smaller = Math.min(Math.abs(amountInNum), Math.abs(amountOutNum))
@@ -51,18 +57,24 @@ export function RateCalculator({
 
     const nextRate = formatAmount(bigger / smaller)
     setRate(nextRate)
-  }, [amountInNum, amountOutNum, setRate])
+  }, [amountInNum, amountOutNum, rate, setRate])
 
   const calculateMissing = (operation: 'multiply' | 'divide') => {
     if (!canCalculateMissing || rateNum === null || rateNum === 0) return
 
     if (amountInNum !== null && !hasAmountOut) {
-      setAmountOut(formatAmount(operation === 'multiply' ? amountInNum * rateNum : amountInNum / rateNum))
+      setAmountOut(formatAmount(
+        operation === 'multiply' ? amountInNum * rateNum : amountInNum / rateNum,
+        amountOutDecimals,
+      ))
       return
     }
 
     if (amountOutNum !== null && !hasAmountIn) {
-      setAmountIn(formatAmount(operation === 'multiply' ? amountOutNum * rateNum : amountOutNum / rateNum))
+      setAmountIn(formatAmount(
+        operation === 'multiply' ? amountOutNum * rateNum : amountOutNum / rateNum,
+        amountInDecimals,
+      ))
     }
   }
 

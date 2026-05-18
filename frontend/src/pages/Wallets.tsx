@@ -173,7 +173,7 @@ export default function Wallets() {
       <FilterBar filters={filterDefs} values={filterVals} onChange={setFilterVals} resultCount={filtered.length} />
 
       <Card>
-        <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No wallets match your filters" />
+        <Table columns={columns} data={filtered} keyFn={r => r.id} loading={isLoading} emptyMessage="No wallets match your filters" pagination />
       </Card>
 
       {/* Create Wallet */}

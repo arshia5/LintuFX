@@ -157,6 +157,7 @@ export default function Users() {
           onRowClick={r => navigate(`/users/${r.id}`)}
           defaultSortKey="name"
           defaultSortDir="asc"
+          pagination
         />
       </Card>
 

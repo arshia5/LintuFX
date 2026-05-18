@@ -278,6 +278,7 @@ export default function EventLogs() {
           keyFn={r => r.id}
           loading={isLoading}
           emptyMessage="No event logs match your filters"
+          pagination
           onRowClick={row => setExpanded(expanded === row.id ? null : row.id)}
           expandedRowKey={expanded}
           renderExpandedRow={log => (

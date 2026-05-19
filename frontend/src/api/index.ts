@@ -43,8 +43,8 @@ export const deleteUser = (id: number) =>
   apiClient.delete(`/users/${id}`)
 
 // Wallets
-export const listWallets = (params?: { user_id?: number; currency_id?: string }) =>
-  apiClient.get('/wallets', { params }).then(r => r.data)
+export const listWallets = (params?: { user_id?: number; currency_id?: string; skip?: number; limit?: number }) =>
+  apiClient.get('/wallets', { params: { limit: 1000, ...params } }).then(r => r.data)
 
 export const getWallet = (id: number) =>
   apiClient.get(`/wallets/${id}`).then(r => r.data)

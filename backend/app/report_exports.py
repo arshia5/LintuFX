@@ -6,6 +6,8 @@ import re
 from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from .models import Currency, HouseExchange, JournalEntry, Order, User, Wallet, WalletAdjustment
@@ -224,21 +226,28 @@ def build_client_statement_xlsx(
     ws.row_dimensions[row].height = 18
     row += 1
 
-    if not wallets:
+    nonzero_wallets = sorted(
+        [wallet for wallet in wallets if wallet.balance != 0],
+        key=lambda wallet: wallet.currency_id,
+    )
+
+    if not nonzero_wallets:
         ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=3)
-        ws[f"B{row}"] = "No wallets"
+        ws[f"B{row}"] = "No non-zero wallets"
         style(f"B{row}", size=10, color=C["gray"])
         row += 1
     else:
-        for index, wallet in enumerate(wallets):
+        for index, wallet in enumerate(nonzero_wallets):
             fill = C["lightBg"] if index % 2 == 1 else C["white"]
             currency = curr_map.get(wallet.currency_id)
+            balance = float(wallet.balance)
             ws[f"B{row}"] = currency.name if currency else wallet.currency_id
-            ws[f"C{row}"] = float(wallet.balance)
+            ws[f"C{row}"] = abs(balance)
             style(f"B{row}", size=10, fill=fill, border=all_borders())
             style(
                 f"C{row}",
                 size=10,
+                color=C["red"] if balance > 0 else C["green"],
                 fill=fill,
                 border=all_borders(),
                 horizontal="right",
@@ -246,6 +255,16 @@ def build_client_statement_xlsx(
             )
             ws.row_dimensions[row].height = 18
             row += 1
+
+    ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
+    ws[f"B{row}"] = CellRichText(
+        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["green"])), "سبز=بستانکار"),
+        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["black"])), "\n"),
+        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["red"])), "قرمز=بدهکار"),
+    )
+    ws[f"B{row}"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[row].height = 20
+    row += 1
 
     row += 1
 

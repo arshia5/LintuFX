@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, FileSpreadsheet, Wallet, ShoppingCart, BookOpen, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, FileText, Wallet, ShoppingCart, BookOpen, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { getUser, listWallets, listOrders, listJournalEntries, listCurrencies, downloadClientStatement } from '../api'
 import { Card, Button, Table, Badge, VoidBadge, Modal, Input, Alert } from '../components/ui'
 import type { OrderRead, JournalEntryRead, WalletRead, CurrencyRead } from '../types'
@@ -22,7 +22,7 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
   const [from, setFrom] = useState(monthAgo)
   const [to, setTo] = useState(today)
   const [err, setErr] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loadingFormat, setLoadingFormat] = useState<'xlsx' | 'pdf' | null>(null)
 
   const filteredOrders = useMemo(() =>
     orders.filter(o => !o.voided_at && o.created_at.slice(0, 10) >= from && o.created_at.slice(0, 10) <= to),
@@ -33,19 +33,19 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
     [journals, from, to]
   )
 
-  const handleExport = async () => {
+  const handleExport = async (format: 'xlsx' | 'pdf') => {
     if (!from || !to) { setErr('Both dates are required'); return }
     if (from > to) { setErr('Start date must be before end date'); return }
     setErr('')
-    setLoading(true)
+    setLoadingFormat(format)
     try {
-      const response = await downloadClientStatement(userId, { from, to })
-      saveBlobResponse(response, `client_statement_${from}_to_${to}.xlsx`)
+      const response = await downloadClientStatement(userId, { from, to, format })
+      saveBlobResponse(response, `client_statement_${from}_to_${to}.${format === 'pdf' ? 'pdf' : 'xlsx'}`)
       onClose()
     } catch {
       setErr('Could not generate the report. Please try again.')
     } finally {
-      setLoading(false)
+      setLoadingFormat(null)
     }
   }
 
@@ -67,8 +67,25 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
         </div>
         <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" icon={<FileSpreadsheet size={15} />} onClick={handleExport} loading={loading}>
-            Download Excel
+          <Button
+            variant="success"
+            size="sm"
+            icon={<FileSpreadsheet size={15} />}
+            onClick={() => handleExport('xlsx')}
+            loading={loadingFormat === 'xlsx'}
+            disabled={loadingFormat !== null}
+          >
+            Excel
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<FileText size={15} />}
+            onClick={() => handleExport('pdf')}
+            loading={loadingFormat === 'pdf'}
+            disabled={loadingFormat !== null}
+          >
+            PDF
           </Button>
         </div>
       </div>
@@ -280,13 +297,12 @@ export default function UserDetail() {
             <p className="text-xs text-gray-400 italic">No wallets</p>
           ) : (
             <div className="space-y-2">
-              {userWallets.map((w: WalletRead) => {
+              {userWallets.map((w: WalletRead, index: number) => {
                 const c = currMap[w.currency_id]
                 return (
-                  <div key={w.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                  <div key={w.id} className={`flex items-center justify-between rounded-md px-2 py-1.5 ${index % 2 === 1 ? 'bg-gray-50' : 'bg-white'}`}>
                     <div>
-                      <span className="text-sm font-medium text-gray-800">{w.currency_id}</span>
-                      {c && <span className="text-xs text-gray-400 ml-1.5">{c.name}</span>}
+                      <span className="text-sm font-medium text-gray-800">{c?.name || w.currency_id}</span>
                     </div>
                     <span className="font-mono text-sm font-semibold text-gray-900">
                       {c?.symbol ? `${c.symbol} ` : ''}{money(w.balance, w.currency_id)}

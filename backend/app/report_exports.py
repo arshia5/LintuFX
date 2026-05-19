@@ -2,13 +2,25 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from io import BytesIO
+import html
+from pathlib import Path
 import re
 from zoneinfo import ZoneInfo
 
+import arabic_reshaper
+from bidi.algorithm import get_display
 from openpyxl import Workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .models import Currency, HouseExchange, JournalEntry, Order, User, Wallet, WalletAdjustment
 
@@ -70,6 +82,165 @@ def date_key(value: datetime) -> str:
     return value.date().isoformat()
 
 
+def title_name_part(value: str | None) -> str:
+    if not value:
+        return ""
+    return value[:1].upper() + value[1:]
+
+
+def user_full_name(user: User) -> str:
+    parts = [title_name_part(user.name)]
+    surname = title_name_part(user.surname)
+    if surname:
+        parts.append(surname)
+    return " ".join(parts)
+
+
+_PDF_FONT: str | None = None
+
+
+def pdf_font() -> str:
+    global _PDF_FONT
+    if _PDF_FONT:
+        return _PDF_FONT
+    for font_path in [
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/System/Library/Fonts/GeezaPro.ttc",
+    ]:
+        if Path(font_path).exists():
+            pdfmetrics.registerFont(TTFont("ReportUnicode", font_path))
+            _PDF_FONT = "ReportUnicode"
+            return _PDF_FONT
+    _PDF_FONT = "Helvetica"
+    return _PDF_FONT
+
+
+def pdf_styles() -> dict[str, ParagraphStyle]:
+    font_name = pdf_font()
+    styles = getSampleStyleSheet()
+    return {
+        "title": ParagraphStyle(
+            "ReportTitle",
+            parent=styles["Title"],
+            fontName=font_name,
+            fontSize=16,
+            leading=20,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor(f"#{C['darkBg']}"),
+            spaceAfter=6,
+        ),
+        "subtitle": ParagraphStyle(
+            "ReportSubtitle",
+            parent=styles["Normal"],
+            fontName=font_name,
+            fontSize=10,
+            leading=13,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor(f"#{C['gray']}"),
+            spaceAfter=10,
+        ),
+        "section": ParagraphStyle(
+            "ReportSection",
+            parent=styles["Heading2"],
+            fontName=font_name,
+            fontSize=10,
+            leading=12,
+            textColor=colors.HexColor(f"#{C['darkBg']}"),
+            spaceBefore=8,
+            spaceAfter=5,
+        ),
+        "cell": ParagraphStyle(
+            "ReportCell",
+            parent=styles["Normal"],
+            fontName=font_name,
+            fontSize=7,
+            leading=9,
+        ),
+        "cellRight": ParagraphStyle(
+            "ReportCellRight",
+            parent=styles["Normal"],
+            fontName=font_name,
+            fontSize=7,
+            leading=9,
+            alignment=TA_RIGHT,
+        ),
+        "small": ParagraphStyle(
+            "ReportSmall",
+            parent=styles["Normal"],
+            fontName=font_name,
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor(f"#{C['gray']}"),
+        ),
+        "smallCenter": ParagraphStyle(
+            "ReportSmallCenter",
+            parent=styles["Normal"],
+            fontName=font_name,
+            fontSize=8,
+            leading=10,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor(f"#{C['gray']}"),
+        ),
+    }
+
+
+ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
+
+
+def shape_rtl_text(value: str) -> str:
+    if not ARABIC_SCRIPT_RE.search(value):
+        return value
+    return "\n".join(get_display(arabic_reshaper.reshape(line)) for line in value.splitlines())
+
+
+def pdf_paragraph(value: object, style: ParagraphStyle, color: str | None = None) -> Paragraph:
+    text = html.escape(shape_rtl_text("" if value is None else str(value))).replace("\n", "<br/>")
+    if color:
+        text = f'<font color="#{color}">{text}</font>'
+    return Paragraph(text, style)
+
+
+def pdf_table(
+    headers: list[str],
+    rows: list[list[object]],
+    widths: list[float],
+    *,
+    right_columns: set[int] | None = None,
+    color_cells: dict[tuple[int, int], str] | None = None,
+) -> LongTable:
+    right_columns = right_columns or set()
+    color_cells = color_cells or {}
+    styles = pdf_styles()
+    table_data: list[list[Paragraph]] = [
+        [pdf_paragraph(header, styles["cell"], C["white"]) for header in headers]
+    ]
+    for row_index, row in enumerate(rows):
+        pdf_row = []
+        for col_index, value in enumerate(row):
+            style = styles["cellRight"] if col_index in right_columns else styles["cell"]
+            pdf_row.append(pdf_paragraph(value, style, color_cells.get((row_index, col_index))))
+        table_data.append(pdf_row)
+
+    table = LongTable(table_data, colWidths=widths, repeatRows=1, splitByRow=True)
+    table_style: list[tuple] = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{C['darkBg']}")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), pdf_font()),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor(f"#{C['border']}")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    for index in range(len(rows)):
+        if index % 2 == 1:
+            table_style.append(("BACKGROUND", (0, index + 1), (-1, index + 1), colors.HexColor("#F8FAFC")))
+    table.setStyle(TableStyle(table_style))
+    return table
+
+
 def build_client_statement_xlsx(
     *,
     user: User,
@@ -82,7 +253,7 @@ def build_client_statement_xlsx(
     to_date: date,
 ) -> tuple[bytes, str]:
     curr_map = {currency.ticker: currency for currency in currencies}
-    full_name = f"{user.name}{' ' + user.surname if user.surname else ''}"
+    full_name = user_full_name(user)
     period_label = f"{from_date.strftime('%d/%m/%Y')} — {to_date.strftime('%d/%m/%Y')}"
     generated_at = fmt_report_datetime(datetime.now(UTC))
 
@@ -367,6 +538,134 @@ def build_client_statement_xlsx(
     return output.getvalue(), filename
 
 
+def build_client_statement_pdf(
+    *,
+    user: User,
+    wallets: list[Wallet],
+    currencies: list[Currency],
+    orders: list[Order],
+    journals: list[JournalEntry],
+    user_wallet_ids: set[int],
+    from_date: date,
+    to_date: date,
+) -> tuple[bytes, str]:
+    curr_map = {currency.ticker: currency for currency in currencies}
+    full_name = user_full_name(user)
+    period_label = f"{from_date.strftime('%d/%m/%Y')} — {to_date.strftime('%d/%m/%Y')}"
+    generated_at = fmt_report_datetime(datetime.now(UTC))
+    styles = pdf_styles()
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        leftMargin=8 * mm,
+        rightMargin=8 * mm,
+        topMargin=8 * mm,
+        bottomMargin=8 * mm,
+    )
+    story = [
+        pdf_paragraph("CLIENT STATEMENT", styles["title"]),
+        pdf_paragraph(full_name, styles["subtitle"]),
+        pdf_paragraph(f"Report Period: {period_label}    Generated: {generated_at}", styles["small"]),
+        Spacer(1, 4),
+        pdf_paragraph("WALLET BALANCES", styles["section"]),
+    ]
+
+    wallet_rows: list[list[object]] = []
+    wallet_colors: dict[tuple[int, int], str] = {}
+    nonzero_wallets = sorted(
+        [wallet for wallet in wallets if wallet.balance != 0],
+        key=lambda wallet: wallet.currency_id,
+    )
+    for index, wallet in enumerate(nonzero_wallets):
+        currency = curr_map.get(wallet.currency_id)
+        balance = float(wallet.balance)
+        wallet_rows.append([
+            currency.name if currency else wallet.currency_id,
+            fmt_currency_money(abs(wallet.balance), currency),
+        ])
+        wallet_colors[(index, 1)] = C["red"] if balance > 0 else C["green"]
+    if not wallet_rows:
+        wallet_rows.append(["No non-zero wallets", ""])
+    story.append(pdf_table(["Currency", "Balance"], wallet_rows, [110 * mm, 50 * mm], right_columns={1}, color_cells=wallet_colors))
+    story.append(pdf_paragraph("سبز=بستانکار", styles["smallCenter"], C["green"]))
+    story.append(pdf_paragraph("قرمز=بدهکار", styles["smallCenter"], C["red"]))
+    story.append(Spacer(1, 6))
+
+    tx_rows: list[dict[str, object]] = []
+    for order in orders:
+        in_curr = curr_map.get(order.currency_in_id)
+        out_curr = curr_map.get(order.currency_out_id)
+        tx_rows.append(
+            {
+                "date": order.created_at,
+                "dateLabel": fmt_report_datetime(order.created_at),
+                "category": "FX Order",
+                "type": order.order_type.value,
+                "description": (
+                    f"{in_curr.name if in_curr else order.currency_in_id} → "
+                    f"{out_curr.name if out_curr else order.currency_out_id} "
+                    f"@ {float(order.exchange_rate):.4f}"
+                ),
+                "sent": f"{fmt_currency_money(order.amount_in, in_curr)} {order.currency_in_id}",
+                "received": f"{fmt_currency_money(order.amount_out, out_curr)} {order.currency_out_id}",
+                "note": order.description or "",
+                "status": "Voided" if order.voided_at else "Active",
+            }
+        )
+
+    for entry in journals:
+        is_out = entry.from_wallet_id in user_wallet_ids
+        currency = curr_map.get(entry.currency_id)
+        tx_rows.append(
+            {
+                "date": entry.created_at,
+                "dateLabel": fmt_report_datetime(entry.created_at),
+                "category": "Transfer",
+                "type": "Sent" if is_out else "Received",
+                "description": f"{currency.name if currency else entry.currency_id} transfer",
+                "sent": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}" if is_out else "",
+                "received": "" if is_out else f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
+                "note": entry.description or "",
+                "status": "Voided" if entry.voided_at else "Active",
+            }
+        )
+    tx_rows.sort(key=lambda item: item["date"])
+
+    story.append(pdf_paragraph(f"TRANSACTION HISTORY ({len(tx_rows)} transactions)", styles["section"]))
+    table_rows = [
+        [
+            row["dateLabel"],
+            row["category"],
+            row["type"],
+            row["description"],
+            row["sent"],
+            row["received"],
+            row["note"],
+            row["status"],
+        ]
+        for row in tx_rows
+    ] or [["No transactions in this period", "", "", "", "", "", "", ""]]
+    story.append(
+        pdf_table(
+            ["Date & Time", "Category", "Type", "Description", "Sent (Debit)", "Received (Credit)", "Note", "Status"],
+            table_rows,
+            [28 * mm, 24 * mm, 18 * mm, 58 * mm, 34 * mm, 36 * mm, 55 * mm, 20 * mm],
+            right_columns={4, 5},
+        )
+    )
+    story.append(Spacer(1, 6))
+    story.append(
+        pdf_paragraph(
+            f"This statement was generated on {generated_at} and reflects all transactions recorded in the system for the selected period.",
+            styles["small"],
+        )
+    )
+    doc.build(story)
+    filename = f"{safe_filename(full_name)}_statement_{from_date.isoformat()}_to_{to_date.isoformat()}.pdf"
+    return output.getvalue(), filename
+
+
 def _format_period_label(from_date: date | None, to_date: date | None) -> str:
     if from_date and to_date:
         return f"{from_date.strftime('%d/%m/%Y')} — {to_date.strftime('%d/%m/%Y')}"
@@ -401,7 +700,7 @@ def build_full_activity_report_xlsx(
         user = user_map.get(user_id)
         if not user:
             return str(user_id)
-        return f"{user.name}{' ' + user.surname if user.surname else ''}"
+        return user_full_name(user)
 
     def note_with_void(note: str | None, void_reason: str | None) -> str:
         parts = []
@@ -727,3 +1026,199 @@ def build_full_activity_report_xlsx(
     else:
         filename_period = "all_time"
     return output.getvalue(), f"full_activity_report_{filename_period}.xlsx"
+
+
+def build_full_activity_report_pdf(
+    *,
+    users: list[User],
+    currencies: list[Currency],
+    wallets: list[Wallet],
+    orders: list[Order],
+    house_exchanges: list[HouseExchange],
+    journals: list[JournalEntry],
+    wallet_adjustments: list[WalletAdjustment],
+    from_date: date | None,
+    to_date: date | None,
+) -> tuple[bytes, str]:
+    generated_at = fmt_report_datetime(datetime.now(UTC))
+    period_label = _format_period_label(from_date, to_date)
+    user_map = {user.id: user for user in users}
+    wallet_map = {wallet.id: wallet for wallet in wallets}
+    currency_map = {currency.ticker: currency for currency in currencies}
+    _ = wallet_adjustments
+
+    def user_label(user_id: int | None) -> str:
+        if user_id is None:
+            return ""
+        user = user_map.get(user_id)
+        if not user:
+            return str(user_id)
+        return user_full_name(user)
+
+    def note_with_void(note: str | None, void_reason: str | None) -> str:
+        parts = []
+        if note:
+            parts.append(note)
+        if void_reason:
+            parts.append(f"Void reason: {void_reason}")
+        return " | ".join(parts)
+
+    def wallet_user_label(wallet_id: int) -> str:
+        wallet = wallet_map.get(wallet_id)
+        if not wallet:
+            return f"Wallet #{wallet_id}"
+        return user_label(wallet.user_id)
+
+    tx_rows: list[dict[str, object]] = []
+    for order in orders:
+        in_curr = currency_map.get(order.currency_in_id)
+        out_curr = currency_map.get(order.currency_out_id)
+        tx_rows.append(
+            {
+                "date": order.created_at,
+                "dateLabel": fmt_report_datetime(order.created_at),
+                "category": "FX Order",
+                "party": user_label(order.client_id),
+                "type": order.order_type.value,
+                "description": (
+                    f"{in_curr.name if in_curr else order.currency_in_id} → "
+                    f"{out_curr.name if out_curr else order.currency_out_id} "
+                    f"@ {float(order.exchange_rate):.4f}"
+                ),
+                "sent": f"{fmt_currency_money(order.amount_in, in_curr)} {order.currency_in_id}",
+                "received": f"{fmt_currency_money(order.amount_out, out_curr)} {order.currency_out_id}",
+                "note": note_with_void(order.description, order.void_reason),
+                "status": "Voided" if order.voided_at else "Active",
+            }
+        )
+
+    for exchange in house_exchanges:
+        from_curr = currency_map.get(exchange.currency_from_id)
+        to_curr = currency_map.get(exchange.currency_to_id)
+        tx_rows.append(
+            {
+                "date": exchange.created_at,
+                "dateLabel": fmt_report_datetime(exchange.created_at),
+                "category": "House Exchange",
+                "party": user_label(exchange.house_id),
+                "type": "Exchange",
+                "description": (
+                    f"{from_curr.name if from_curr else exchange.currency_from_id} → "
+                    f"{to_curr.name if to_curr else exchange.currency_to_id} "
+                    f"@ {float(exchange.exchange_rate):.4f}"
+                ),
+                "sent": f"{fmt_currency_money(exchange.amount_from, from_curr)} {exchange.currency_from_id}",
+                "received": f"{fmt_currency_money(exchange.amount_to, to_curr)} {exchange.currency_to_id}",
+                "note": note_with_void(exchange.description, exchange.void_reason),
+                "status": "Voided" if exchange.voided_at else "Active",
+            }
+        )
+
+    for entry in journals:
+        currency = currency_map.get(entry.currency_id)
+        tx_rows.append(
+            {
+                "date": entry.created_at,
+                "dateLabel": fmt_report_datetime(entry.created_at),
+                "category": "Transfer",
+                "party": f"{wallet_user_label(entry.from_wallet_id)} → {wallet_user_label(entry.to_wallet_id)}",
+                "type": entry.currency_id,
+                "description": f"{currency.name if currency else entry.currency_id} transfer",
+                "sent": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
+                "received": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
+                "note": note_with_void(entry.description, entry.void_reason),
+                "status": "Voided" if entry.voided_at else "Active",
+            }
+        )
+    tx_rows.sort(key=lambda item: item["date"])
+
+    styles = pdf_styles()
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        leftMargin=8 * mm,
+        rightMargin=8 * mm,
+        topMargin=8 * mm,
+        bottomMargin=8 * mm,
+    )
+    story = [
+        pdf_paragraph("FULL ACTIVITY REPORT", styles["title"]),
+        pdf_paragraph("FX Orders & Transfers", styles["subtitle"]),
+        pdf_paragraph(f"Report Period: {period_label}    Generated: {generated_at}", styles["small"]),
+        Spacer(1, 6),
+        pdf_paragraph(f"TRANSACTION HISTORY ({len(tx_rows)} transactions)", styles["section"]),
+    ]
+    table_rows = [
+        [
+            row["dateLabel"],
+            row["category"],
+            row["party"],
+            row["type"],
+            row["description"],
+            row["sent"],
+            row["received"],
+            row["note"],
+            row["status"],
+        ]
+        for row in tx_rows
+    ] or [["No transactions in this period", "", "", "", "", "", "", "", ""]]
+    story.append(
+        pdf_table(
+            ["Date & Time", "Category", "Party", "Type", "Description", "Sent", "Received", "Note", "Status"],
+            table_rows,
+            [24 * mm, 24 * mm, 37 * mm, 17 * mm, 48 * mm, 29 * mm, 31 * mm, 49 * mm, 18 * mm],
+            right_columns={5, 6},
+        )
+    )
+
+    open_wallets = sorted(
+        [wallet for wallet in wallets if wallet.balance != 0],
+        key=lambda wallet: (
+            user_label(wallet.user_id).lower(),
+            wallet.currency_id,
+        ),
+    )
+    wallet_rows: list[list[object]] = []
+    last_owner = None
+    for wallet in open_wallets:
+        user = user_map.get(wallet.user_id)
+        currency = currency_map.get(wallet.currency_id)
+        owner = user_label(wallet.user_id)
+        owner_key = owner.lower()
+        show_owner = owner_key != last_owner
+        wallet_rows.append(
+            [
+                owner if show_owner else "",
+                user.role.value if show_owner and user else "",
+                currency.name if currency else wallet.currency_id,
+                fmt_currency_money(wallet.balance, currency),
+            ]
+        )
+        last_owner = owner_key
+    if not wallet_rows:
+        wallet_rows.append(["No non-zero wallets", "", "", ""])
+
+    story.append(Spacer(1, 8))
+    story.append(pdf_paragraph("NON-ZERO WALLETS", styles["section"]))
+    story.append(
+        pdf_table(
+            ["Name", "Role", "Currency", "Balance"],
+            wallet_rows,
+            [70 * mm, 30 * mm, 70 * mm, 40 * mm],
+            right_columns={3},
+        )
+    )
+    story.append(Spacer(1, 6))
+    story.append(
+        pdf_paragraph(
+            f"This report was generated on {generated_at} and includes all FX orders, house exchanges, and transfers recorded for the selected period, including voided records.",
+            styles["small"],
+        )
+    )
+    doc.build(story)
+    if from_date or to_date:
+        filename_period = f"{from_date.isoformat() if from_date else 'start'}_to_{to_date.isoformat() if to_date else 'today'}"
+    else:
+        filename_period = "all_time"
+    return output.getvalue(), f"full_activity_report_{filename_period}.pdf"

@@ -89,7 +89,7 @@ export default function EventLogs() {
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['event-logs'],
-    queryFn: () => listEventLogs({ limit: 500 }),
+    queryFn: () => listEventLogs(),
   })
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => listUsers() })
 

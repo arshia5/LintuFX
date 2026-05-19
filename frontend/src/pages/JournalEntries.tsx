@@ -9,6 +9,7 @@ import type { JournalEntryRead, WalletRead, CurrencyRead, UserRead } from '../ty
 
 import { fmtDateTimeShort, nowIstanbulISO, istanbulLocalToUTC } from '../utils/date'
 import { formatCurrencyNumber } from '../utils/number'
+import { currencyOption, currencySearchText } from '../utils/currency'
 const fmtDate = fmtDateTimeShort
 
 export default function JournalEntries() {
@@ -91,7 +92,7 @@ export default function JournalEntries() {
       if (toSearch && !toName.includes(toSearch)) return false
 
       const curr = (filterVals.currency as string).toLowerCase()
-      if (curr && !e.currency_id.toLowerCase().includes(curr)) return false
+      if (curr && !currencySearchText(e.currency_id, currMap).includes(curr)) return false
 
       const st = filterVals.status as string
       if (st === 'active' && e.voided_at) return false
@@ -99,7 +100,7 @@ export default function JournalEntries() {
 
       return true
     })
-  }, [entries, filterVals, walletMap, userMap])
+  }, [entries, filterVals, walletMap, userMap, currMap])
 
   const columns = [
     { key: 'id', header: '#', render: (r: JournalEntryRead) => <span className="font-mono text-xs text-gray-400">#{r.id}</span>, sortValue: (r: JournalEntryRead) => r.id },
@@ -265,8 +266,7 @@ function JournalFormModal({ open, onClose, onSubmit, loading, title, wallets, cu
   const allCurrencies = currencies // fallback when one side not yet picked
 
   const currOpts = (fromUser && toUser ? sharedCurrencies : allCurrencies).map(c => ({
-    value: c.ticker,
-    label: c.name || c.ticker,
+    ...currencyOption(c),
   }))
 
   // Resolve wallet IDs from user + currency

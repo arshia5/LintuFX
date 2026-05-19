@@ -9,6 +9,7 @@ import { VoidModal } from './Orders'
 import type { HouseExchangeRead, UserRead, CurrencyRead, WalletRead } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
 import { formatCurrencyNumber, formatNumber } from '../utils/number'
+import { currencyOption, currencySearchText } from '../utils/currency'
 const fmtDate = fmtDateTimeShort
 
 export default function HouseExchanges() {
@@ -107,7 +108,7 @@ export default function HouseExchanges() {
 
       const curr = (filterVals.currency as string).toLowerCase()
       if (curr) {
-        const pair = `${e.currency_from_id} ${e.currency_to_id}`.toLowerCase()
+        const pair = `${e.currency_from_id} ${e.currency_to_id} ${currencySearchText(e.currency_from_id, currMap)} ${currencySearchText(e.currency_to_id, currMap)}`.toLowerCase()
         if (!pair.includes(curr)) return false
       }
 
@@ -117,7 +118,7 @@ export default function HouseExchanges() {
 
       return true
     })
-  }, [exchanges, filterVals, userMap])
+  }, [exchanges, filterVals, userMap, currMap])
 
   return (
     <div>
@@ -218,7 +219,7 @@ function ExchangeFormModal({ open, onClose, onSubmit, loading, title, houseUsers
   // Only show currencies the house account actually has wallets for
   const houseWalletCurrencies = new Set(houseWallets.map(w => w.currency_id))
   const currOpts = (houseId ? currencies.filter(c => houseWalletCurrencies.has(c.ticker)) : currencies)
-    .map(c => ({ value: c.ticker, label: c.name || c.ticker }))
+    .map(currencyOption)
 
   const houseOpts = houseUsers.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username}` }))
 

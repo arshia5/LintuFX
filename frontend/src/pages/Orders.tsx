@@ -12,6 +12,7 @@ import type { FilterDef, FilterValues } from '../components/ui'
 import type { OrderRead, UserRead, CurrencyRead, OrderCreate, OrderType } from '../types'
 import { fmtDateTimeShort, nowIstanbulISO, istanbulLocalToUTC } from '../utils/date'
 import { formatCurrencyNumber, formatNumber } from '../utils/number'
+import { currencyOption, currencySearchText } from '../utils/currency'
 const fmtDate = fmtDateTimeShort
 
 export default function Orders() {
@@ -86,7 +87,7 @@ export default function Orders() {
 
       const currency = (filterVals.currency as string).toLowerCase()
       if (currency) {
-        const pair = `${o.currency_in_id}/${o.currency_out_id}`.toLowerCase()
+        const pair = `${o.currency_in_id}/${o.currency_out_id} ${currencySearchText(o.currency_in_id, currMap)} ${currencySearchText(o.currency_out_id, currMap)}`.toLowerCase()
         if (!pair.includes(currency)) return false
       }
 
@@ -99,7 +100,7 @@ export default function Orders() {
 
       return true
     })
-  }, [orders, filterVals, userMap])
+  }, [orders, filterVals, userMap, currMap])
 
   const columns = [
     { key: 'id', header: '#', render: (r: OrderRead) => <span className="font-mono text-xs text-gray-400">#{r.id}</span>, sortValue: (r: OrderRead) => r.id },
@@ -231,7 +232,7 @@ function OrderFormModal({ open, onClose, onSubmit, loading, title, clients, curr
   const [err, setErr] = useState('')
 
   const clientOpts = clients.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username}` }))
-  const currOpts = currencies.map(c => ({ value: c.ticker, label: c.name || c.ticker }))
+  const currOpts = currencies.map(currencyOption)
   const currencyMap: Record<string, CurrencyRead> = {}
   currencies.forEach(c => { currencyMap[c.ticker] = c })
 

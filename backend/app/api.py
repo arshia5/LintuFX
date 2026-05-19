@@ -58,7 +58,13 @@ from .schemas import (
 from .auth import require_authenticated_user, require_developer_user, require_house_user
 from .config import get_settings
 from .security import create_access_token, hash_password, verify_password
-from .report_exports import build_client_statement_xlsx, build_full_activity_report_xlsx, date_key
+from .report_exports import (
+    build_client_statement_pdf,
+    build_client_statement_xlsx,
+    build_full_activity_report_pdf,
+    build_full_activity_report_xlsx,
+    date_key,
+)
 from .services import (
     HouseExchangeEffect,
     JournalEffect,
@@ -1315,9 +1321,23 @@ def client_debts_report(
     )
 
 
-@router.get("/reports/client-statements/{user_id}.xlsx", tags=["reports"])
+def report_response(content: bytes, filename: str, file_type: Literal["xlsx", "pdf"]) -> StreamingResponse:
+    media_type = (
+        "application/pdf"
+        if file_type == "pdf"
+        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    return StreamingResponse(
+        BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/client-statements/{user_id}.{file_type}", tags=["reports"])
 def client_statement_export(
     user_id: int,
+    file_type: Literal["xlsx", "pdf"],
     from_date: date = Query(alias="from"),
     to_date: date = Query(alias="to"),
     db: Session = Depends(get_db),
@@ -1364,7 +1384,8 @@ def client_statement_export(
         journals = []
 
     currencies = list(db.scalars(select(Currency).order_by(Currency.ticker)).all())
-    content, filename = build_client_statement_xlsx(
+    builder = build_client_statement_pdf if file_type == "pdf" else build_client_statement_xlsx
+    content, filename = builder(
         user=user,
         wallets=wallets,
         currencies=currencies,
@@ -1374,11 +1395,7 @@ def client_statement_export(
         from_date=from_date,
         to_date=to_date,
     )
-    return StreamingResponse(
-        BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return report_response(content, filename, file_type)
 
 
 def in_report_period(value: datetime, from_date: date | None, to_date: date | None) -> bool:
@@ -1390,8 +1407,9 @@ def in_report_period(value: datetime, from_date: date | None, to_date: date | No
     return True
 
 
-@router.get("/reports/full-activity.xlsx", tags=["reports"])
+@router.get("/reports/full-activity.{file_type}", tags=["reports"])
 def full_activity_export(
+    file_type: Literal["xlsx", "pdf"],
     from_date: date | None = Query(default=None, alias="from"),
     to_date: date | None = Query(default=None, alias="to"),
     db: Session = Depends(get_db),
@@ -1425,7 +1443,8 @@ def full_activity_export(
         for adjustment in db.scalars(select(WalletAdjustment).order_by(WalletAdjustment.id.desc())).all()
         if in_report_period(adjustment.created_at, from_date, to_date)
     ]
-    content, filename = build_full_activity_report_xlsx(
+    builder = build_full_activity_report_pdf if file_type == "pdf" else build_full_activity_report_xlsx
+    content, filename = builder(
         users=users,
         currencies=currencies,
         wallets=wallets,
@@ -1436,8 +1455,4 @@ def full_activity_export(
         from_date=from_date,
         to_date=to_date,
     )
-    return StreamingResponse(
-        BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return report_response(content, filename, file_type)

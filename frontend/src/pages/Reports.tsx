@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileSpreadsheet } from 'lucide-react'
+import { FileSpreadsheet, FileText } from 'lucide-react'
 import { getClientBalances, listUsers, listCurrencies, downloadFullActivityReport } from '../api'
 import { PageHeader, Card, Table, Badge, SearchableSelect, Input, Button, Alert } from '../components/ui'
 import type { ClientBalanceReport, UserRead, CurrencyRead } from '../types'
 import { saveBlobResponse } from '../utils/download'
 import { formatCurrencyNumber } from '../utils/number'
+import { currencyOption } from '../utils/currency'
 
 const positionColors: Record<string, 'red' | 'green' | 'gray'> = {
   client_owes_house: 'red',
@@ -27,7 +28,7 @@ export default function Reports() {
   const [activityAllTime, setActivityAllTime] = useState(true)
   const [activityFrom, setActivityFrom] = useState(monthAgo)
   const [activityTo, setActivityTo] = useState(today)
-  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityLoadingFormat, setActivityLoadingFormat] = useState<'xlsx' | 'pdf' | null>(null)
   const [activityError, setActivityError] = useState('')
 
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => listUsers() })
@@ -47,7 +48,7 @@ export default function Reports() {
   ]
   const currOpts = [
     { value: '', label: 'All Currencies' },
-    ...currencies.map((c: CurrencyRead) => ({ value: c.ticker, label: c.name || c.ticker }))
+    ...currencies.map((c: CurrencyRead) => currencyOption(c))
   ]
 
   const balancesQuery = useQuery({
@@ -63,7 +64,7 @@ export default function Reports() {
   const data: ClientBalanceReport[] = balancesQuery.data ?? []
   const isLoading = balancesQuery.isLoading
 
-  const handleActivityExport = async () => {
+  const handleActivityExport = async (format: 'xlsx' | 'pdf') => {
     if (!activityAllTime && (!activityFrom || !activityTo)) {
       setActivityError('Both dates are required')
       return
@@ -73,21 +74,22 @@ export default function Reports() {
       return
     }
     setActivityError('')
-    setActivityLoading(true)
+    setActivityLoadingFormat(format)
     try {
       const response = await downloadFullActivityReport(
-        activityAllTime ? undefined : { from: activityFrom, to: activityTo }
+        activityAllTime ? { format } : { from: activityFrom, to: activityTo, format }
       )
+      const extension = format === 'pdf' ? 'pdf' : 'xlsx'
       saveBlobResponse(
         response,
         activityAllTime
-          ? 'full_activity_report_all_time.xlsx'
-          : `full_activity_report_${activityFrom}_to_${activityTo}.xlsx`
+          ? `full_activity_report_all_time.${extension}`
+          : `full_activity_report_${activityFrom}_to_${activityTo}.${extension}`
       )
     } catch {
       setActivityError('Could not generate the full activity report. Please try again.')
     } finally {
-      setActivityLoading(false)
+      setActivityLoadingFormat(null)
     }
   }
 
@@ -161,11 +163,22 @@ export default function Reports() {
               onChange={e => setActivityTo(e.target.value)}
             />
             <Button
+              variant="success"
               icon={<FileSpreadsheet size={15} />}
-              onClick={handleActivityExport}
-              loading={activityLoading}
+              onClick={() => handleActivityExport('xlsx')}
+              loading={activityLoadingFormat === 'xlsx'}
+              disabled={activityLoadingFormat !== null}
             >
-              Download Excel
+              Excel
+            </Button>
+            <Button
+              variant="danger"
+              icon={<FileText size={15} />}
+              onClick={() => handleActivityExport('pdf')}
+              loading={activityLoadingFormat === 'pdf'}
+              disabled={activityLoadingFormat !== null}
+            >
+              PDF
             </Button>
           </div>
         </div>

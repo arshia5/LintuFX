@@ -8,6 +8,7 @@ import type { FilterDef, FilterValues } from '../components/ui'
 import type { WalletRead, WalletAdjustmentRead, UserRead, CurrencyRead, WalletCreate } from '../types'
 import { fmtDateTimeShort } from '../utils/date'
 import { formatCurrencyNumber } from '../utils/number'
+import { currencyOption, currencySearchText } from '../utils/currency'
 const fmtDate = fmtDateTimeShort
 const ALL_CURRENCIES = '__ALL_CURRENCIES__'
 
@@ -149,7 +150,7 @@ export default function Wallets() {
       if (ownerSearch && !ownerName.includes(ownerSearch)) return false
 
       const curr = (filterVals.currency as string).toLowerCase()
-      if (curr && !w.currency_id.toLowerCase().includes(curr)) return false
+      if (curr && !currencySearchText(w.currency_id, currMap).includes(curr)) return false
 
       const bal = filterVals.balance as string
       const n = parseFloat(w.balance)
@@ -162,7 +163,7 @@ export default function Wallets() {
 
       return true
     })
-  }, [wallets, filterVals, userMap])
+  }, [wallets, filterVals, userMap, currMap])
 
   return (
     <div>
@@ -238,7 +239,7 @@ function CreateWalletModal({ open, onClose, onSubmit, loading, users, currencies
   const missingCount = currencies.filter(c => !existingForUser.has(c.ticker)).length
   const currOpts = [
     { value: ALL_CURRENCIES, label: 'All currencies', sublabel: userId ? `${missingCount} missing wallet${missingCount === 1 ? '' : 's'}` : 'Create one wallet per currency' },
-    ...currencies.map(c => ({ value: c.ticker, label: c.name || c.ticker })),
+    ...currencies.map(currencyOption),
   ]
 
   const submit = () => {

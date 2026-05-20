@@ -429,9 +429,9 @@ def build_client_statement_xlsx(
 
     ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
     ws[f"B{row}"] = CellRichText(
-        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["green"])), "سبز=بستانکار"),
+        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["green"])), "Green=Creditor"),
         TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["black"])), "\n"),
-        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["red"])), "قرمز=بدهکار"),
+        TextBlock(InlineFont(rFont="Calibri", sz=8, color=argb(C["red"])), "Red=Debtor"),
     )
     ws[f"B{row}"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
     ws.row_dimensions[row].height = 20
@@ -588,8 +588,8 @@ def build_client_statement_pdf(
     if not wallet_rows:
         wallet_rows.append(["No non-zero wallets", ""])
     story.append(pdf_table(["Currency", "Balance"], wallet_rows, [110 * mm, 50 * mm], right_columns={1}, color_cells=wallet_colors))
-    story.append(pdf_paragraph("سبز=بستانکار", styles["smallCenter"], C["green"]))
-    story.append(pdf_paragraph("قرمز=بدهکار", styles["smallCenter"], C["red"]))
+    story.append(pdf_paragraph("Green=Creditor", styles["smallCenter"], C["green"]))
+    story.append(pdf_paragraph("Red=Debtor", styles["smallCenter"], C["red"]))
     story.append(Spacer(1, 6))
 
     tx_rows: list[dict[str, object]] = []

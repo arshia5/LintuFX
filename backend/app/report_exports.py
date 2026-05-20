@@ -248,6 +248,7 @@ def build_client_statement_xlsx(
     currencies: list[Currency],
     orders: list[Order],
     journals: list[JournalEntry],
+    wallet_adjustments: list[WalletAdjustment],
     user_wallet_ids: set[int],
     from_date: date,
     to_date: date,
@@ -295,6 +296,24 @@ def build_client_statement_xlsx(
                 "note": entry.description or "",
                 "status": "Voided" if entry.voided_at else "Active",
                 "voided": bool(entry.voided_at),
+            }
+        )
+
+    for adjustment in wallet_adjustments:
+        currency = curr_map.get(adjustment.currency_id)
+        amount = adjustment.amount_delta
+        tx_rows.append(
+            {
+                "date": adjustment.created_at,
+                "dateLabel": fmt_report_datetime(adjustment.created_at),
+                "category": "Wallet Adjustment",
+                "type": adjustment.currency_id,
+                "description": f"{currency.name if currency else adjustment.currency_id} balance adjustment",
+                "sent": f"{fmt_currency_money(abs(amount), currency)} {adjustment.currency_id}" if amount < 0 else "",
+                "received": f"{fmt_currency_money(amount, currency)} {adjustment.currency_id}" if amount > 0 else "",
+                "note": adjustment.reason,
+                "status": "Active",
+                "voided": False,
             }
         )
 
@@ -545,6 +564,7 @@ def build_client_statement_pdf(
     currencies: list[Currency],
     orders: list[Order],
     journals: list[JournalEntry],
+    wallet_adjustments: list[WalletAdjustment],
     user_wallet_ids: set[int],
     from_date: date,
     to_date: date,
@@ -628,6 +648,23 @@ def build_client_statement_pdf(
                 "received": "" if is_out else f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
                 "note": entry.description or "",
                 "status": "Voided" if entry.voided_at else "Active",
+            }
+        )
+
+    for adjustment in wallet_adjustments:
+        currency = curr_map.get(adjustment.currency_id)
+        amount = adjustment.amount_delta
+        tx_rows.append(
+            {
+                "date": adjustment.created_at,
+                "dateLabel": fmt_report_datetime(adjustment.created_at),
+                "category": "Wallet Adjustment",
+                "type": adjustment.currency_id,
+                "description": f"{currency.name if currency else adjustment.currency_id} balance adjustment",
+                "sent": f"{fmt_currency_money(abs(amount), currency)} {adjustment.currency_id}" if amount < 0 else "",
+                "received": f"{fmt_currency_money(amount, currency)} {adjustment.currency_id}" if amount > 0 else "",
+                "note": adjustment.reason,
+                "status": "Active",
             }
         )
     tx_rows.sort(key=lambda item: item["date"])
@@ -778,6 +815,26 @@ def build_full_activity_report_xlsx(
                 "note": note_with_void(entry.description, entry.void_reason),
                 "status": "Voided" if entry.voided_at else "Active",
                 "voided": bool(entry.voided_at),
+            }
+        )
+
+    for adjustment in wallet_adjustments:
+        wallet = wallet_map.get(adjustment.wallet_id)
+        currency = currency_map.get(adjustment.currency_id)
+        amount = adjustment.amount_delta
+        tx_rows.append(
+            {
+                "date": adjustment.created_at,
+                "dateLabel": fmt_report_datetime(adjustment.created_at),
+                "category": "Wallet Adjustment",
+                "party": user_label(wallet.user_id) if wallet else f"Wallet #{adjustment.wallet_id}",
+                "type": adjustment.currency_id,
+                "description": f"{currency.name if currency else adjustment.currency_id} balance adjustment",
+                "sent": f"{fmt_currency_money(abs(amount), currency)} {adjustment.currency_id}" if amount < 0 else "",
+                "received": f"{fmt_currency_money(amount, currency)} {adjustment.currency_id}" if amount > 0 else "",
+                "note": adjustment.reason,
+                "status": "Active",
+                "voided": False,
             }
         )
 
@@ -1045,7 +1102,6 @@ def build_full_activity_report_pdf(
     user_map = {user.id: user for user in users}
     wallet_map = {wallet.id: wallet for wallet in wallets}
     currency_map = {currency.ticker: currency for currency in currencies}
-    _ = wallet_adjustments
 
     def user_label(user_id: int | None) -> str:
         if user_id is None:
@@ -1128,6 +1184,25 @@ def build_full_activity_report_pdf(
                 "received": f"{fmt_currency_money(entry.amount, currency)} {entry.currency_id}",
                 "note": note_with_void(entry.description, entry.void_reason),
                 "status": "Voided" if entry.voided_at else "Active",
+            }
+        )
+
+    for adjustment in wallet_adjustments:
+        wallet = wallet_map.get(adjustment.wallet_id)
+        currency = currency_map.get(adjustment.currency_id)
+        amount = adjustment.amount_delta
+        tx_rows.append(
+            {
+                "date": adjustment.created_at,
+                "dateLabel": fmt_report_datetime(adjustment.created_at),
+                "category": "Wallet Adjustment",
+                "party": user_label(wallet.user_id) if wallet else f"Wallet #{adjustment.wallet_id}",
+                "type": adjustment.currency_id,
+                "description": f"{currency.name if currency else adjustment.currency_id} balance adjustment",
+                "sent": f"{fmt_currency_money(abs(amount), currency)} {adjustment.currency_id}" if amount < 0 else "",
+                "received": f"{fmt_currency_money(amount, currency)} {adjustment.currency_id}" if amount > 0 else "",
+                "note": adjustment.reason,
+                "status": "Active",
             }
         )
     tx_rows.sort(key=lambda item: item["date"])

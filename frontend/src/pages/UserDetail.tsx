@@ -2,20 +2,21 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, FileSpreadsheet, FileText, Wallet, ShoppingCart, BookOpen, TrendingUp, TrendingDown, Minus } from 'lucide-react'
-import { getUser, listWallets, listOrders, listJournalEntries, listCurrencies, downloadClientStatement } from '../api'
+import { getUser, listWallets, listOrders, listJournalEntries, listCurrencies, listWalletAdjustments, downloadClientStatement } from '../api'
 import { Card, Button, Table, Badge, VoidBadge, Modal, Input, Alert } from '../components/ui'
-import type { OrderRead, JournalEntryRead, WalletRead, CurrencyRead } from '../types'
+import type { OrderRead, JournalEntryRead, WalletRead, WalletAdjustmentRead, CurrencyRead } from '../types'
 import { fmtDate, fmtDateTimeShort } from '../utils/date'
 import { saveBlobResponse } from '../utils/download'
 import { formatCurrencyNumber, formatNumber } from '../utils/number'
 
 // ── Export Modal ──────────────────────────────────────────────────────────────
-function ExportModal({ open, onClose, userId, orders, journals }: {
+function ExportModal({ open, onClose, userId, orders, journals, adjustments }: {
   open: boolean
   onClose: () => void
   userId: number
   orders: OrderRead[]
   journals: JournalEntryRead[]
+  adjustments: WalletAdjustmentRead[]
 }) {
   const today = new Date().toISOString().slice(0, 10)
   const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
@@ -31,6 +32,10 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
   const filteredJournals = useMemo(() =>
     journals.filter(j => !j.voided_at && j.created_at.slice(0, 10) >= from && j.created_at.slice(0, 10) <= to),
     [journals, from, to]
+  )
+  const filteredAdjustments = useMemo(() =>
+    adjustments.filter(a => a.created_at.slice(0, 10) >= from && a.created_at.slice(0, 10) <= to),
+    [adjustments, from, to]
   )
 
   const handleExport = async (format: 'xlsx' | 'pdf') => {
@@ -63,7 +68,8 @@ function ExportModal({ open, onClose, userId, orders, journals }: {
         <div className="bg-blue-50 rounded-lg px-4 py-3 text-xs text-blue-700">
           <span className="font-medium">{filteredOrders.length}</span> orders &nbsp;·&nbsp;
           <span className="font-medium">{filteredJournals.length}</span> transfers in period
-          &nbsp;·&nbsp; <span className="font-medium">{filteredOrders.length + filteredJournals.length}</span> total rows
+          &nbsp;·&nbsp; <span className="font-medium">{filteredAdjustments.length}</span> adjustments
+          &nbsp;·&nbsp; <span className="font-medium">{filteredOrders.length + filteredJournals.length + filteredAdjustments.length}</span> total rows
         </div>
         <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
@@ -99,7 +105,7 @@ export default function UserDetail() {
   const navigate = useNavigate()
   const userId = Number(id)
   const [exportOpen, setExportOpen] = useState(false)
-  const [tab, setTab] = useState<'orders' | 'journals' | 'wallets'>('orders')
+  const [tab, setTab] = useState<'orders' | 'journals' | 'adjustments' | 'wallets'>('orders')
 
   const { data: user, isLoading: userLoading } = useQuery({
     queryKey: ['user', userId],
@@ -117,6 +123,10 @@ export default function UserDetail() {
   const { data: allJournals = [], isLoading: journalsLoading } = useQuery({
     queryKey: ['journal-entries'],
     queryFn: () => listJournalEntries(),
+  })
+  const { data: allAdjustments = [], isLoading: adjustmentsLoading } = useQuery({
+    queryKey: ['wallet-adjustments'],
+    queryFn: () => listWalletAdjustments(),
   })
 
   const currMap: Record<string, CurrencyRead> = {}
@@ -138,6 +148,9 @@ export default function UserDetail() {
   // Journal entries where this user is sender or receiver
   const userJournals: JournalEntryRead[] = allJournals.filter((j: JournalEntryRead) =>
     userWalletIds.has(j.from_wallet_id) || userWalletIds.has(j.to_wallet_id)
+  )
+  const userAdjustments: WalletAdjustmentRead[] = allAdjustments.filter((a: WalletAdjustmentRead) =>
+    userWalletIds.has(a.wallet_id)
   )
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -209,6 +222,31 @@ export default function UserDetail() {
     { key: 'note', header: 'Note', render: (r: JournalEntryRead) => <span className="text-xs text-gray-500 max-w-[160px] block truncate">{r.description || '—'}</span> },
     { key: 'status', header: 'Status', render: (r: JournalEntryRead) => <VoidBadge voidedAt={r.voided_at} />, sortValue: (r: JournalEntryRead) => r.voided_at ?? '' },
     { key: 'date', header: 'Date', render: (r: JournalEntryRead) => <span className="text-xs text-gray-400">{fmtDateTimeShort(r.created_at)}</span>, sortValue: (r: JournalEntryRead) => r.created_at },
+  ]
+
+  const adjustmentColumns = [
+    { key: 'id', header: '#', render: (r: WalletAdjustmentRead) => <span className="font-mono text-xs text-gray-400">#{r.id}</span>, sortValue: (r: WalletAdjustmentRead) => r.id },
+    {
+      key: 'currency', header: 'Currency',
+      render: (r: WalletAdjustmentRead) => <span className="text-sm font-medium text-gray-800">{currMap[r.currency_id]?.name || r.currency_id}</span>,
+      sortValue: (r: WalletAdjustmentRead) => currMap[r.currency_id]?.name ?? r.currency_id,
+    },
+    {
+      key: 'change', header: 'Change',
+      render: (r: WalletAdjustmentRead) => {
+        const n = parseFloat(r.amount_delta)
+        return (
+          <span className={`font-semibold text-sm ${n < 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {n > 0 ? '+' : ''}{money(r.amount_delta, r.currency_id)}
+          </span>
+        )
+      },
+      sortValue: (r: WalletAdjustmentRead) => parseFloat(r.amount_delta),
+    },
+    { key: 'before', header: 'Before', render: (r: WalletAdjustmentRead) => <span className="text-sm">{money(r.balance_before, r.currency_id)}</span>, sortValue: (r: WalletAdjustmentRead) => parseFloat(r.balance_before) },
+    { key: 'after', header: 'After', render: (r: WalletAdjustmentRead) => <span className="text-sm">{money(r.balance_after, r.currency_id)}</span>, sortValue: (r: WalletAdjustmentRead) => parseFloat(r.balance_after) },
+    { key: 'reason', header: 'Reason', render: (r: WalletAdjustmentRead) => <span className="text-xs text-gray-500 max-w-[180px] block truncate">{r.reason || '—'}</span> },
+    { key: 'date', header: 'Date', render: (r: WalletAdjustmentRead) => <span className="text-xs text-gray-400">{fmtDateTimeShort(r.created_at)}</span>, sortValue: (r: WalletAdjustmentRead) => r.created_at },
   ]
 
   if (userLoading) {
@@ -359,6 +397,7 @@ export default function UserDetail() {
             {([
               { key: 'orders', label: 'Orders', count: userOrders.length },
               { key: 'journals', label: 'Journal Entries', count: userJournals.length },
+              { key: 'adjustments', label: 'Adjustments', count: userAdjustments.length },
               { key: 'wallets', label: 'Wallets', count: userWallets.length },
             ] as const).map(t => (
               <button
@@ -403,6 +442,18 @@ export default function UserDetail() {
           />
         )}
 
+        {tab === 'adjustments' && (
+          <Table
+            columns={adjustmentColumns}
+            data={userAdjustments}
+            keyFn={r => r.id}
+            loading={adjustmentsLoading}
+            emptyMessage="No wallet adjustments for this user"
+            defaultSortKey="date"
+            defaultSortDir="desc"
+          />
+        )}
+
         {tab === 'wallets' && (
           <div className="p-6">
             {userWallets.length === 0 ? (
@@ -440,6 +491,7 @@ export default function UserDetail() {
         userId={userId}
         orders={userOrders}
         journals={userJournals}
+        adjustments={userAdjustments}
       />
     </div>
   )

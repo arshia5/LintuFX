@@ -1380,8 +1380,18 @@ def client_statement_export(
             if entry.voided_at is None
             and from_date.isoformat() <= date_key(entry.created_at) <= to_date.isoformat()
         ]
+        wallet_adjustments = [
+            adjustment
+            for adjustment in db.scalars(
+                select(WalletAdjustment)
+                .where(WalletAdjustment.wallet_id.in_(wallet_ids))
+                .order_by(WalletAdjustment.id.desc())
+            ).all()
+            if from_date.isoformat() <= date_key(adjustment.created_at) <= to_date.isoformat()
+        ]
     else:
         journals = []
+        wallet_adjustments = []
 
     currencies = list(db.scalars(select(Currency).order_by(Currency.ticker)).all())
     builder = build_client_statement_pdf if file_type == "pdf" else build_client_statement_xlsx
@@ -1391,6 +1401,7 @@ def client_statement_export(
         currencies=currencies,
         orders=orders,
         journals=journals,
+        wallet_adjustments=wallet_adjustments,
         user_wallet_ids=wallet_ids,
         from_date=from_date,
         to_date=to_date,

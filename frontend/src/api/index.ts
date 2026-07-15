@@ -2,12 +2,13 @@ import { apiClient } from './client'
 import type {
   CurrencyCreate, CurrencyRead, CurrencyUpdate,
   EventLogRead,
+  ExpenseCreate, ExpenseCorrectionCreate, ExpenseRead,
   HouseExchangeCreate, HouseExchangeCorrectionCreate, HouseExchangeRead,
   JournalEntryCreate, JournalEntryCorrectionCreate, JournalEntryRead,
   OrderCreate, OrderCorrectionCreate, OrderRead,
   UserCreate, UserRead, UserUpdate,
   WalletAdjustmentRead, WalletCreate, WalletBalanceAdjustmentCreate, WalletRead,
-  VoidRequest, UserRole, OrderType,
+  VoidRequest, UserRole, OrderType, ExpenseType,
 } from '../types'
 
 type PageParams = { skip?: number; limit?: number }
@@ -126,6 +127,25 @@ export const correctHouseExchange = (id: number, data: HouseExchangeCorrectionCr
 
 export const deleteHouseExchange = (id: number) =>
   apiClient.delete(`/house-exchanges/${id}`)
+
+// Expenses & Withdrawals
+export const listExpenses = (params?: { house_id?: number; expense_type?: ExpenseType; currency_id?: string } & PageParams) =>
+  listAll<ExpenseRead>('/expenses', params)
+
+export const getExpense = (id: number) =>
+  apiClient.get(`/expenses/${id}`).then(r => r.data)
+
+export const createExpense = (data: ExpenseCreate) =>
+  apiClient.post('/expenses', data).then(r => r.data)
+
+export const voidExpense = (id: number, data: VoidRequest) =>
+  apiClient.post(`/expenses/${id}/void`, data).then(r => r.data)
+
+export const correctExpense = (id: number, data: ExpenseCorrectionCreate) =>
+  apiClient.post(`/expenses/${id}/corrections`, data).then(r => r.data)
+
+export const deleteExpense = (id: number) =>
+  apiClient.delete(`/expenses/${id}`)
 
 // Journal Entries
 export const listJournalEntries = (params?: { from_wallet_id?: number; to_wallet_id?: number; currency_id?: string } & PageParams) =>

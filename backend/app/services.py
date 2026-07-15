@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .models import (
     Currency,
     EventLog,
+    Expense,
     HouseExchange,
     JournalEntry,
     Order,
@@ -41,6 +42,13 @@ class HouseExchangeEffect:
     currency_to_id: str
     amount_from: Decimal
     amount_to: Decimal
+
+
+@dataclass(frozen=True)
+class ExpenseEffect:
+    house_id: int
+    currency_id: str
+    amount: Decimal
 
 
 @dataclass(frozen=True)
@@ -238,6 +246,26 @@ def apply_house_exchange_effect(
 
     adjust_wallet(from_wallet, -effect.amount_from * direction)
     adjust_wallet(to_wallet, effect.amount_to * direction)
+
+
+def expense_effect_from_model(expense: Expense) -> ExpenseEffect:
+    return ExpenseEffect(
+        house_id=expense.house_id,
+        currency_id=expense.currency_id,
+        amount=expense.amount,
+    )
+
+
+def validate_expense_effect(db: Session, effect: ExpenseEffect) -> None:
+    ensure_user_role(db, effect.house_id, UserRole.HOUSE, "house_id")
+    get_currency_or_404(db, effect.currency_id)
+
+
+def apply_expense_effect(db: Session, effect: ExpenseEffect, multiplier: int = 1) -> None:
+    validate_expense_effect(db, effect)
+    direction = Decimal(multiplier)
+    wallet = get_or_create_wallet(db, effect.house_id, effect.currency_id)
+    adjust_wallet(wallet, -effect.amount * direction)
 
 
 def journal_effect_from_model(entry: JournalEntry) -> JournalEffect:

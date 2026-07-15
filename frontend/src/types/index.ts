@@ -1,5 +1,6 @@
 export type UserRole = 'CLIENT' | 'HOUSE' | 'DEVELOPER'
 export type OrderType = 'BUY' | 'SELL'
+export type ExpenseType = 'EXPENSE' | 'WITHDRAWAL'
 
 export interface TokenRead {
   access_token: string
@@ -188,6 +189,45 @@ export interface HouseExchangeCorrectionCreate {
 export interface HouseExchangeCorrectionRead {
   voided_record: HouseExchangeRead
   correction_record: HouseExchangeRead
+}
+
+export interface ExpenseRead {
+  house_id: number
+  expense_type: ExpenseType
+  currency_id: string
+  amount: string
+  description: string | null
+  id: number
+  created_at: string
+  created_by_user_id: number | null
+  updated_by_user_id: number | null
+  voided_at: string | null
+  voided_by_user_id: number | null
+  void_reason: string | null
+}
+
+export interface ExpenseCreate {
+  house_id: number
+  expense_type: ExpenseType
+  currency_id: string
+  amount: string | number
+  description?: string | null
+  created_at?: string | null
+}
+
+export interface ExpenseCorrectionCreate {
+  house_id: number
+  expense_type: ExpenseType
+  currency_id: string
+  amount: string | number
+  description?: string | null
+  created_at?: string | null
+  correction_reason: string
+}
+
+export interface ExpenseCorrectionRead {
+  voided_record: ExpenseRead
+  correction_record: ExpenseRead
 }
 
 export interface JournalEntryRead {

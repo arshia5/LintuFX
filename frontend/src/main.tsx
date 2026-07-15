@@ -14,6 +14,7 @@ import Wallets from './pages/Wallets'
 import Orders from './pages/Orders'
 import UserDetail from './pages/UserDetail'
 import HouseExchanges from './pages/HouseExchanges'
+import Expenses from './pages/Expenses'
 import JournalEntries from './pages/JournalEntries'
 import Reports from './pages/Reports'
 import EventLogs from './pages/EventLogs'
@@ -48,6 +49,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/wallets" element={<Wallets />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/house-exchanges" element={<HouseExchanges />} />
+                <Route path="/expenses" element={<Expenses />} />
                 <Route path="/journal-entries" element={<JournalEntries />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/event-logs" element={<DeveloperOnly><EventLogs /></DeveloperOnly>} />

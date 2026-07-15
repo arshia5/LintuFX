@@ -22,7 +22,17 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .models import Currency, HouseExchange, JournalEntry, Order, User, Wallet, WalletAdjustment
+from .models import (
+    Currency,
+    Expense,
+    ExpenseType,
+    HouseExchange,
+    JournalEntry,
+    Order,
+    User,
+    Wallet,
+    WalletAdjustment,
+)
 
 
 ISTANBUL_TZ = ZoneInfo("Europe/Istanbul")
@@ -720,6 +730,7 @@ def build_full_activity_report_xlsx(
     wallets: list[Wallet],
     orders: list[Order],
     house_exchanges: list[HouseExchange],
+    expenses: list[Expense],
     journals: list[JournalEntry],
     wallet_adjustments: list[WalletAdjustment],
     from_date: date | None,
@@ -797,6 +808,25 @@ def build_full_activity_report_xlsx(
                 "note": note_with_void(exchange.description, exchange.void_reason),
                 "status": "Voided" if exchange.voided_at else "Active",
                 "voided": bool(exchange.voided_at),
+            }
+        )
+
+    for expense in expenses:
+        currency = currency_map.get(expense.currency_id)
+        kind_label = "Withdrawal" if expense.expense_type == ExpenseType.WITHDRAWAL else "Expense"
+        tx_rows.append(
+            {
+                "date": expense.created_at,
+                "dateLabel": fmt_report_datetime(expense.created_at),
+                "category": kind_label,
+                "party": user_label(expense.house_id),
+                "type": expense.currency_id,
+                "description": f"{currency.name if currency else expense.currency_id} {kind_label.lower()}",
+                "sent": f"{fmt_currency_money(expense.amount, currency)} {expense.currency_id}",
+                "received": "",
+                "note": note_with_void(expense.description, expense.void_reason),
+                "status": "Voided" if expense.voided_at else "Active",
+                "voided": bool(expense.voided_at),
             }
         )
 
@@ -1092,6 +1122,7 @@ def build_full_activity_report_pdf(
     wallets: list[Wallet],
     orders: list[Order],
     house_exchanges: list[HouseExchange],
+    expenses: list[Expense],
     journals: list[JournalEntry],
     wallet_adjustments: list[WalletAdjustment],
     from_date: date | None,
@@ -1167,6 +1198,24 @@ def build_full_activity_report_pdf(
                 "received": f"{fmt_currency_money(exchange.amount_to, to_curr)} {exchange.currency_to_id}",
                 "note": note_with_void(exchange.description, exchange.void_reason),
                 "status": "Voided" if exchange.voided_at else "Active",
+            }
+        )
+
+    for expense in expenses:
+        currency = currency_map.get(expense.currency_id)
+        kind_label = "Withdrawal" if expense.expense_type == ExpenseType.WITHDRAWAL else "Expense"
+        tx_rows.append(
+            {
+                "date": expense.created_at,
+                "dateLabel": fmt_report_datetime(expense.created_at),
+                "category": kind_label,
+                "party": user_label(expense.house_id),
+                "type": expense.currency_id,
+                "description": f"{currency.name if currency else expense.currency_id} {kind_label.lower()}",
+                "sent": f"{fmt_currency_money(expense.amount, currency)} {expense.currency_id}",
+                "received": "",
+                "note": note_with_void(expense.description, expense.void_reason),
+                "status": "Voided" if expense.voided_at else "Active",
             }
         )
 

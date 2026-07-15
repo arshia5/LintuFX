@@ -12,10 +12,12 @@ from .database import get_db
 from .models import (
     Currency,
     EventLog,
+    Expense,
     HouseExchange,
     JournalEntry,
     Order,
     OrderType,
+    ExpenseType,
     User,
     UserRole,
     Wallet,
@@ -29,6 +31,10 @@ from .schemas import (
     CurrencyRead,
     CurrencyUpdate,
     EventLogRead,
+    ExpenseCreate,
+    ExpenseCorrectionCreate,
+    ExpenseCorrectionRead,
+    ExpenseRead,
     FreshStartRead,
     FreshStartRequest,
     HouseExchangeCreate,
@@ -66,13 +72,16 @@ from .report_exports import (
     date_key,
 )
 from .services import (
+    ExpenseEffect,
     HouseExchangeEffect,
     JournalEffect,
     OrderEffect,
+    apply_expense_effect,
     apply_house_exchange_effect,
     apply_journal_effect,
     apply_order_effect,
     commit_or_409,
+    expense_effect_from_model,
     get_currency_or_404,
     get_user_or_404,
     get_wallet_or_404,
@@ -106,7 +115,9 @@ def append_only_error(record_name: str) -> None:
     )
 
 
-def ensure_not_voided(record: Order | HouseExchange | JournalEntry, record_name: str) -> None:
+def ensure_not_voided(
+    record: Order | HouseExchange | JournalEntry | Expense, record_name: str
+) -> None:
     if record.voided_at is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -199,6 +210,7 @@ def fresh_start(
         ("journal_entries", delete(JournalEntry)),
         ("orders", delete(Order)),
         ("house_exchanges", delete(HouseExchange)),
+        ("expenses", delete(Expense)),
         ("wallet_adjustments", delete(WalletAdjustment)),
         ("wallets", delete(Wallet)),
         ("client_users", delete(User).where(User.role == UserRole.CLIENT)),
@@ -238,6 +250,7 @@ def clear_records(
         ("journal_entries", delete(JournalEntry)),
         ("orders", delete(Order)),
         ("house_exchanges", delete(HouseExchange)),
+        ("expenses", delete(Expense)),
         ("wallet_adjustments", delete(WalletAdjustment)),
         ("wallets", delete(Wallet)),
         ("client_users", delete(User).where(User.role == UserRole.CLIENT)),
@@ -455,6 +468,14 @@ def update_user(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot change a house role while house exchanges reference the user",
+                )
+            has_expenses = db.scalar(
+                select(Expense.id).where(Expense.house_id == user.id).limit(1)
+            )
+            if has_expenses is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot change a house role while expenses reference the user",
                 )
 
     for key, value in data.items():
@@ -1028,6 +1049,167 @@ def correct_house_exchange(
 
 
 @router.post(
+    "/expenses",
+    response_model=ExpenseRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["expenses"],
+)
+def create_expense(
+    payload: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_house_user),
+) -> Expense:
+    actor_id = current_user.id
+    expense = Expense(**payload.model_dump(exclude_none=True), created_by_user_id=actor_id)
+    effect = ExpenseEffect(
+        house_id=expense.house_id,
+        currency_id=expense.currency_id,
+        amount=expense.amount,
+    )
+    apply_expense_effect(db, effect, multiplier=1)
+    db.add(expense)
+    flush_or_409(db, "Expense violates a constraint")
+    log_event(
+        db,
+        event_type="expense.created",
+        entity_type="expense",
+        entity_id=expense.id,
+        actor_user_id=actor_id,
+        details={"payload": payload_details(payload), "after": model_snapshot(expense)},
+    )
+    commit_or_409(db, "Expense violates a constraint")
+    db.refresh(expense)
+    return expense
+
+
+@router.get("/expenses", response_model=list[ExpenseRead], tags=["expenses"])
+def list_expenses(
+    house_id: int | None = None,
+    expense_type: ExpenseType | None = None,
+    currency_id: str | None = None,
+    page: tuple[int, int] = Depends(pagination),
+    db: Session = Depends(get_db),
+) -> list[Expense]:
+    skip, limit = page
+    stmt = select(Expense)
+    if house_id is not None:
+        stmt = stmt.where(Expense.house_id == house_id)
+    if expense_type is not None:
+        stmt = stmt.where(Expense.expense_type == expense_type)
+    if currency_id is not None:
+        stmt = stmt.where(Expense.currency_id == normalize_ticker(currency_id))
+    stmt = stmt.order_by(Expense.id.desc()).offset(skip).limit(limit)
+    return list(db.scalars(stmt).all())
+
+
+@router.get("/expenses/{expense_id}", response_model=ExpenseRead, tags=["expenses"])
+def get_expense(expense_id: int, db: Session = Depends(get_db)) -> Expense:
+    expense = db.get(Expense, expense_id)
+    if not expense:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
+    return expense
+
+
+@router.patch("/expenses/{expense_id}", response_model=ExpenseRead, tags=["expenses"])
+def update_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+) -> Expense:
+    append_only_error("Expense")
+
+
+@router.delete(
+    "/expenses/{expense_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["expenses"],
+)
+def delete_expense(expense_id: int, db: Session = Depends(get_db)) -> None:
+    append_only_error("Expense")
+
+
+@router.post("/expenses/{expense_id}/void", response_model=ExpenseRead, tags=["expenses"])
+def void_expense(
+    expense_id: int,
+    payload: VoidRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_house_user),
+) -> Expense:
+    actor_id = current_user.id
+    expense = db.scalar(select(Expense).where(Expense.id == expense_id).with_for_update())
+    if not expense:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
+    ensure_not_voided(expense, "Expense")
+    before = model_snapshot(expense)
+
+    apply_expense_effect(db, expense_effect_from_model(expense), multiplier=-1)
+    expense.voided_at = datetime.now(UTC)
+    expense.voided_by_user_id = actor_id
+    expense.void_reason = payload.reason
+    expense.updated_by_user_id = actor_id
+    log_event(
+        db,
+        event_type="expense.voided",
+        entity_type="expense",
+        entity_id=expense.id,
+        actor_user_id=actor_id,
+        details={"reason": payload.reason, "before": before, "after": model_snapshot(expense)},
+    )
+    commit_or_409(db, "Expense void violates a constraint")
+    db.refresh(expense)
+    return expense
+
+
+@router.post(
+    "/expenses/{expense_id}/corrections",
+    response_model=ExpenseCorrectionRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["expenses"],
+)
+def correct_expense(
+    expense_id: int,
+    payload: ExpenseCorrectionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_house_user),
+) -> ExpenseCorrectionRead:
+    actor_id = current_user.id
+    original = db.scalar(select(Expense).where(Expense.id == expense_id).with_for_update())
+    if not original:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
+    ensure_not_voided(original, "Expense")
+    original_before = model_snapshot(original)
+
+    apply_expense_effect(db, expense_effect_from_model(original), multiplier=-1)
+    original.voided_at = datetime.now(UTC)
+    original.voided_by_user_id = actor_id
+    original.void_reason = payload.correction_reason
+    original.updated_by_user_id = actor_id
+
+    correction_data = payload.model_dump(exclude={"correction_reason"}, exclude_none=True)
+    correction = Expense(**correction_data, created_by_user_id=actor_id)
+    apply_expense_effect(db, expense_effect_from_model(correction), multiplier=1)
+    db.add(correction)
+    flush_or_409(db, "Expense correction violates a constraint")
+    log_event(
+        db,
+        event_type="expense.corrected",
+        entity_type="expense",
+        entity_id=original.id,
+        actor_user_id=actor_id,
+        details={
+            "reason": payload.correction_reason,
+            "voided_before": original_before,
+            "voided_after": model_snapshot(original),
+            "correction": model_snapshot(correction),
+        },
+    )
+
+    commit_or_409(db, "Expense correction violates a constraint")
+    db.refresh(original)
+    db.refresh(correction)
+    return ExpenseCorrectionRead(voided_record=original, correction_record=correction)
+
+
+@router.post(
     "/journal-entries",
     response_model=JournalEntryRead,
     status_code=status.HTTP_201_CREATED,
@@ -1444,6 +1626,11 @@ def full_activity_export(
         for exchange in db.scalars(select(HouseExchange).order_by(HouseExchange.id.desc())).all()
         if in_report_period(exchange.created_at, from_date, to_date)
     ]
+    expenses = [
+        expense
+        for expense in db.scalars(select(Expense).order_by(Expense.id.desc())).all()
+        if in_report_period(expense.created_at, from_date, to_date)
+    ]
     journals = [
         entry
         for entry in db.scalars(select(JournalEntry).order_by(JournalEntry.id.desc())).all()
@@ -1461,6 +1648,7 @@ def full_activity_export(
         wallets=wallets,
         orders=orders,
         house_exchanges=house_exchanges,
+        expenses=expenses,
         journals=journals,
         wallet_adjustments=wallet_adjustments,
         from_date=from_date,

@@ -36,6 +36,11 @@ class OrderType(str, Enum):
     SELL = "SELL"
 
 
+class ExpenseType(str, Enum):
+    EXPENSE = "EXPENSE"
+    WITHDRAWAL = "WITHDRAWAL"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -304,6 +309,57 @@ class HouseExchange(TimestampMixin, Base):
     )
     currency_from: Mapped[Currency] = relationship(foreign_keys=[currency_from_id])
     currency_to: Mapped[Currency] = relationship(foreign_keys=[currency_to_id])
+    created_by_user: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by_user: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    voided_by_user: Mapped[User | None] = relationship(foreign_keys=[voided_by_user_id])
+
+
+class Expense(TimestampMixin, Base):
+    __tablename__ = "expenses"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_expenses_amount_positive"),
+        CheckConstraint(
+            "(voided_at IS NULL AND voided_by_user_id IS NULL AND void_reason IS NULL) "
+            "OR (voided_at IS NOT NULL AND voided_by_user_id IS NOT NULL "
+            "AND void_reason IS NOT NULL)",
+            name="ck_expenses_void_fields_consistent",
+        ),
+        Index("ix_expenses_house_id", "house_id"),
+        Index("ix_expenses_currency_id", "currency_id"),
+        Index("ix_expenses_expense_type", "expense_type"),
+        Index("ix_expenses_created_by_user_id", "created_by_user_id"),
+        Index("ix_expenses_voided_by_user_id", "voided_by_user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    house_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    expense_type: Mapped[ExpenseType] = mapped_column(
+        SAEnum(ExpenseType, name="expense_type", native_enum=True, validate_strings=True),
+        nullable=False,
+    )
+    currency_id: Mapped[str] = mapped_column(
+        ForeignKey("currencies.ticker"),
+        nullable=False,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    updated_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    house: Mapped[User] = relationship(foreign_keys=[house_id])
+    currency: Mapped[Currency] = relationship(foreign_keys=[currency_id])
     created_by_user: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
     updated_by_user: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
     voided_by_user: Mapped[User | None] = relationship(foreign_keys=[voided_by_user_id])

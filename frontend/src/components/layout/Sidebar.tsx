@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Wallet, ShoppingCart,
   ArrowLeftRight, BookOpen, BarChart3, Settings,
   Coins, ChevronLeft, ChevronRight, LogOut, ScrollText,
-  Menu, X,
+  Receipt, Menu, X,
 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -14,6 +14,7 @@ const nav = [
   { to: '/orders', label: 'Orders', icon: ShoppingCart },
   { to: '/journal-entries', label: 'Journal Entries', icon: BookOpen },
   { to: '/house-exchanges', label: 'House Exchanges', icon: ArrowLeftRight },
+  { to: '/expenses', label: 'Expenses', icon: Receipt },
   { to: '/wallets', label: 'Wallets', icon: Wallet },
   { to: '/users', label: 'Users', icon: Users },
   { to: '/currencies', label: 'Currencies', icon: Coins },

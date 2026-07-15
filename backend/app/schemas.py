@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .models import OrderType, UserRole
+from .models import ExpenseType, OrderType, UserRole
 
 
 Money = Annotated[Decimal, Field(max_digits=18, decimal_places=4)]
@@ -268,6 +268,42 @@ class HouseExchangeCorrectionCreate(HouseExchangeCreate):
 class HouseExchangeCorrectionRead(SchemaBase):
     voided_record: HouseExchangeRead
     correction_record: HouseExchangeRead
+
+
+class ExpenseBase(SchemaBase):
+    house_id: int
+    expense_type: ExpenseType
+    currency_id: str = Field(min_length=1, max_length=12)
+    amount: PositiveMoney
+    description: str | None = None
+
+    @field_validator("currency_id")
+    @classmethod
+    def uppercase_expense_currency(cls, value: str) -> str:
+        return normalize_ticker(value)
+
+
+class ExpenseCreate(ExpenseBase):
+    created_at: datetime | None = None
+
+
+class ExpenseRead(ExpenseBase):
+    id: int
+    created_at: datetime
+    created_by_user_id: int | None = None
+    updated_by_user_id: int | None = None
+    voided_at: datetime | None = None
+    voided_by_user_id: int | None = None
+    void_reason: str | None = None
+
+
+class ExpenseCorrectionCreate(ExpenseCreate):
+    correction_reason: str = Field(min_length=1, max_length=1000)
+
+
+class ExpenseCorrectionRead(SchemaBase):
+    voided_record: ExpenseRead
+    correction_record: ExpenseRead
 
 
 class JournalEntryBase(SchemaBase):

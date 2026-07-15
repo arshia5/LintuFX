@@ -352,9 +352,12 @@ export function Table<T>({
     else { setSortKey(key); setSortDir('desc') }
   }
 
+  // Reset to the first page when the dataset size or sort changes (e.g. filtering).
+  // Depend on data.length, not the array reference: expanding a row re-renders the
+  // parent and rebuilds the (same-length) data array, which must NOT reset the page.
   useEffect(() => {
     setPage(1)
-  }, [data, sortKey, sortDir, pageSize])
+  }, [data.length, sortKey, sortDir, pageSize])
 
   const totalPages = pagination ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1
   const safePage = Math.min(page, totalPages)

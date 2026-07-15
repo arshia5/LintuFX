@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { login as apiLogin } from '../api'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import { login as apiLogin, refreshToken as apiRefresh } from '../api'
 import type { UserRead } from '../types'
 
 interface AuthContextType {
@@ -12,6 +12,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+// Silently renew the access token while the app is open so active staff are not
+// bounced to the login screen when the token expires.
+const REFRESH_INTERVAL_MS = 20 * 60 * 1000 // 20 minutes
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('fx_token'))
   const [user, setUser] = useState<UserRead | null>(() => {
@@ -19,20 +23,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u ? JSON.parse(u) : null
   })
 
+  const applySession = useCallback((accessToken: string, u: UserRead) => {
+    setToken(accessToken)
+    localStorage.setItem('fx_token', accessToken)
+    setUser(u)
+    localStorage.setItem('fx_user', JSON.stringify(u))
+  }, [])
+
   const login = async (username: string, password: string) => {
     const data = await apiLogin(username, password)
-    setToken(data.access_token)
-    localStorage.setItem('fx_token', data.access_token)
-    setUser(data.user)
-    localStorage.setItem('fx_user', JSON.stringify(data.user))
+    applySession(data.access_token, data.user)
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null)
     setUser(null)
     localStorage.removeItem('fx_token')
     localStorage.removeItem('fx_user')
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    const doRefresh = async () => {
+      try {
+        const data = await apiRefresh()
+        if (!cancelled) applySession(data.access_token, data.user)
+      } catch {
+        // Expired-token 401s are handled by the axios interceptor (redirect to
+        // login). Ignore transient/other failures and try again next tick.
+      }
+    }
+    const intervalId = window.setInterval(doRefresh, REFRESH_INTERVAL_MS)
+    const onFocus = () => doRefresh()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [token, applySession])
 
   return (
     <AuthContext.Provider value={{ token, user, isAuthenticated: !!token, login, logout }}>

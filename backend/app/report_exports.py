@@ -814,12 +814,15 @@ def build_full_activity_report_xlsx(
     for expense in expenses:
         currency = currency_map.get(expense.currency_id)
         kind_label = "Withdrawal" if expense.expense_type == ExpenseType.WITHDRAWAL else "Expense"
+        party = user_label(expense.house_id)
+        if expense.recipient_user_id is not None:
+            party = f"{party} → {user_label(expense.recipient_user_id)}"
         tx_rows.append(
             {
                 "date": expense.created_at,
                 "dateLabel": fmt_report_datetime(expense.created_at),
                 "category": kind_label,
-                "party": user_label(expense.house_id),
+                "party": party,
                 "type": expense.currency_id,
                 "description": f"{currency.name if currency else expense.currency_id} {kind_label.lower()}",
                 "sent": f"{fmt_currency_money(expense.amount, currency)} {expense.currency_id}",
@@ -1204,12 +1207,15 @@ def build_full_activity_report_pdf(
     for expense in expenses:
         currency = currency_map.get(expense.currency_id)
         kind_label = "Withdrawal" if expense.expense_type == ExpenseType.WITHDRAWAL else "Expense"
+        party = user_label(expense.house_id)
+        if expense.recipient_user_id is not None:
+            party = f"{party} → {user_label(expense.recipient_user_id)}"
         tx_rows.append(
             {
                 "date": expense.created_at,
                 "dateLabel": fmt_report_datetime(expense.created_at),
                 "category": kind_label,
-                "party": user_label(expense.house_id),
+                "party": party,
                 "type": expense.currency_id,
                 "description": f"{currency.name if currency else expense.currency_id} {kind_label.lower()}",
                 "sent": f"{fmt_currency_money(expense.amount, currency)} {expense.currency_id}",

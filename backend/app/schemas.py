@@ -275,12 +275,19 @@ class ExpenseBase(SchemaBase):
     expense_type: ExpenseType
     currency_id: str = Field(min_length=1, max_length=12)
     amount: PositiveMoney
+    recipient_user_id: int | None = None
     description: str | None = None
 
     @field_validator("currency_id")
     @classmethod
     def uppercase_expense_currency(cls, value: str) -> str:
         return normalize_ticker(value)
+
+    @model_validator(mode="after")
+    def recipient_only_for_withdrawal(self) -> "ExpenseBase":
+        if self.recipient_user_id is not None and self.expense_type != ExpenseType.WITHDRAWAL:
+            raise ValueError("recipient_user_id is only allowed for WITHDRAWAL entries")
+        return self
 
 
 class ExpenseCreate(ExpenseBase):

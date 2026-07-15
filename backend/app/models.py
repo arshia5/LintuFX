@@ -327,6 +327,7 @@ class Expense(TimestampMixin, Base):
         Index("ix_expenses_house_id", "house_id"),
         Index("ix_expenses_currency_id", "currency_id"),
         Index("ix_expenses_expense_type", "expense_type"),
+        Index("ix_expenses_recipient_user_id", "recipient_user_id"),
         Index("ix_expenses_created_by_user_id", "created_by_user_id"),
         Index("ix_expenses_voided_by_user_id", "voided_by_user_id"),
     )
@@ -342,6 +343,11 @@ class Expense(TimestampMixin, Base):
         nullable=False,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # For WITHDRAWAL rows: the HOUSE/DEVELOPER user who took the profit. Null for EXPENSE.
+    recipient_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
@@ -360,6 +366,7 @@ class Expense(TimestampMixin, Base):
 
     house: Mapped[User] = relationship(foreign_keys=[house_id])
     currency: Mapped[Currency] = relationship(foreign_keys=[currency_id])
+    recipient_user: Mapped[User | None] = relationship(foreign_keys=[recipient_user_id])
     created_by_user: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
     updated_by_user: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
     voided_by_user: Mapped[User | None] = relationship(foreign_keys=[voided_by_user_id])

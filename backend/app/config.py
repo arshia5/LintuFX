@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     cors_allowed_origins: str | None = Field(default=None)
     cors_allowed_origin_regex: str | None = Field(default=None)
     jwt_secret_key: str = Field(default="change-this-secret-before-production")
-    jwt_access_token_expire_minutes: int = Field(default=60)
+    jwt_access_token_expire_minutes: int = Field(default=720)
 
     model_config = SettingsConfigDict(
         env_file=".env",

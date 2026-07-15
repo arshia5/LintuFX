@@ -131,6 +131,17 @@ def payload_details(payload: object) -> dict:
     return {}
 
 
+def validate_expense_recipient(db: Session, recipient_user_id: int | None) -> None:
+    if recipient_user_id is None:
+        return
+    recipient = get_user_or_404(db, recipient_user_id)
+    if recipient.role not in {UserRole.HOUSE, UserRole.DEVELOPER}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="recipient_user_id must reference a HOUSE or DEVELOPER user",
+        )
+
+
 def deleted_count(rowcount: int | None) -> int:
     return 0 if rowcount is None or rowcount < 0 else rowcount
 
@@ -189,6 +200,26 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenRead:
         access_token=token,
         expires_in=int(expires_delta.total_seconds()),
         user=user,
+    )
+
+
+@router.post("/auth/refresh", response_model=TokenRead, tags=["auth"])
+def refresh_token(
+    current_user: User = Depends(require_authenticated_user),
+) -> TokenRead:
+    """Issue a fresh token for a still-valid session so active staff are not logged out."""
+    settings = get_settings()
+    expires_delta = timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    token = create_access_token(
+        subject=str(current_user.id),
+        secret_key=settings.jwt_secret_key,
+        expires_delta=expires_delta,
+        extra_claims={"role": current_user.role.value, "username": current_user.username},
+    )
+    return TokenRead(
+        access_token=token,
+        expires_in=int(expires_delta.total_seconds()),
+        user=current_user,
     )
 
 
@@ -1060,6 +1091,7 @@ def create_expense(
     current_user: User = Depends(require_house_user),
 ) -> Expense:
     actor_id = current_user.id
+    validate_expense_recipient(db, payload.recipient_user_id)
     expense = Expense(**payload.model_dump(exclude_none=True), created_by_user_id=actor_id)
     effect = ExpenseEffect(
         house_id=expense.house_id,
@@ -1087,6 +1119,7 @@ def list_expenses(
     house_id: int | None = None,
     expense_type: ExpenseType | None = None,
     currency_id: str | None = None,
+    recipient_user_id: int | None = None,
     page: tuple[int, int] = Depends(pagination),
     db: Session = Depends(get_db),
 ) -> list[Expense]:
@@ -1098,6 +1131,8 @@ def list_expenses(
         stmt = stmt.where(Expense.expense_type == expense_type)
     if currency_id is not None:
         stmt = stmt.where(Expense.currency_id == normalize_ticker(currency_id))
+    if recipient_user_id is not None:
+        stmt = stmt.where(Expense.recipient_user_id == recipient_user_id)
     stmt = stmt.order_by(Expense.id.desc()).offset(skip).limit(limit)
     return list(db.scalars(stmt).all())
 
@@ -1176,6 +1211,7 @@ def correct_expense(
     if not original:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
     ensure_not_voided(original, "Expense")
+    validate_expense_recipient(db, payload.recipient_user_id)
     original_before = model_snapshot(original)
 
     apply_expense_effect(db, expense_effect_from_model(original), multiplier=-1)

@@ -42,6 +42,9 @@ async function listAll<T>(path: string, params?: QueryParams & PageParams): Prom
 export const login = (username: string, password: string) =>
   apiClient.post('/auth/login', { username, password }).then(r => r.data)
 
+export const refreshToken = () =>
+  apiClient.post('/auth/refresh').then(r => r.data)
+
 // Currencies
 export const listCurrencies = (params?: { is_active?: boolean } & PageParams) =>
   listAll<CurrencyRead>('/currencies', params)
@@ -129,7 +132,7 @@ export const deleteHouseExchange = (id: number) =>
   apiClient.delete(`/house-exchanges/${id}`)
 
 // Expenses & Withdrawals
-export const listExpenses = (params?: { house_id?: number; expense_type?: ExpenseType; currency_id?: string } & PageParams) =>
+export const listExpenses = (params?: { house_id?: number; expense_type?: ExpenseType; currency_id?: string; recipient_user_id?: number } & PageParams) =>
   listAll<ExpenseRead>('/expenses', params)
 
 export const getExpense = (id: number) =>

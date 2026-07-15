@@ -42,6 +42,8 @@ export default function Expenses() {
     return `${user.name}${user.surname ? ` ${user.surname}` : ''}`
   }
   const houseUsers = users.filter((u: UserRead) => u.role === 'HOUSE')
+  // Profit from a withdrawal can go to a HOUSE or DEVELOPER user.
+  const recipientUsers = users.filter((u: UserRead) => u.role === 'HOUSE' || u.role === 'DEVELOPER')
 
   const createMut = useMutation({
     mutationFn: createExpense,
@@ -86,6 +88,13 @@ export default function Expenses() {
     { key: 'expense_type', header: 'Type', render: (r: ExpenseRead) => <Badge variant={TYPE_META[r.expense_type].badge}>{TYPE_META[r.expense_type].label}</Badge>, sortValue: (r: ExpenseRead) => r.expense_type },
     { key: 'currency', header: 'Currency', render: (r: ExpenseRead) => <span className="font-mono font-semibold text-sm">{r.currency_id}</span>, sortValue: (r: ExpenseRead) => r.currency_id },
     { key: 'amount', header: 'Amount', render: (r: ExpenseRead) => <span className="text-sm text-red-600">-{money(r.amount, r.currency_id)}</span>, sortValue: (r: ExpenseRead) => parseFloat(r.amount) },
+    {
+      key: 'recipient', header: 'Profit To',
+      render: (r: ExpenseRead) => r.recipient_user_id
+        ? <span className="text-sm">{userName(r.recipient_user_id)}</span>
+        : <span className="text-gray-300 text-xs">—</span>,
+      sortValue: (r: ExpenseRead) => r.recipient_user_id ? userMap[r.recipient_user_id]?.name ?? '' : '',
+    },
     { key: 'status', header: 'Status', render: (r: ExpenseRead) => <VoidBadge voidedAt={r.voided_at} />, sortValue: (r: ExpenseRead) => r.voided_at ?? '' },
     { key: 'created_at', header: 'Date', render: (r: ExpenseRead) => <span className="text-xs text-gray-400">{fmtDate(r.created_at)}</span>, sortValue: (r: ExpenseRead) => r.created_at },
     {
@@ -106,6 +115,7 @@ export default function Expenses() {
   // ── Filters ────────────────────────────────────────────────────────────────
   const filterDefs: FilterDef[] = useMemo(() => [
     { key: 'search', label: 'House Account', type: 'text', placeholder: 'Search house account name...' },
+    { key: 'recipient', label: 'Profit To', type: 'text', placeholder: 'Search recipient name...' },
     { key: 'currency', label: 'Currency', type: 'text', placeholder: 'e.g. USD or EUR' },
     {
       key: 'expense_type', label: 'Type', type: 'toggle',
@@ -125,6 +135,13 @@ export default function Expenses() {
       const houseName = u ? `${u.name} ${u.surname ?? ''} ${u.username}`.toLowerCase() : ''
       const search = (filterVals.search as string).toLowerCase()
       if (search && !houseName.includes(search)) return false
+
+      const recipient = (filterVals.recipient as string).toLowerCase()
+      if (recipient) {
+        const ru = e.recipient_user_id ? userMap[e.recipient_user_id] : null
+        const recipientName = ru ? `${ru.name} ${ru.surname ?? ''} ${ru.username}`.toLowerCase() : ''
+        if (!recipientName.includes(recipient)) return false
+      }
 
       const curr = (filterVals.currency as string).toLowerCase()
       if (curr) {
@@ -166,6 +183,9 @@ export default function Expenses() {
           renderExpandedRow={expandedItem => (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div><p className="text-xs text-gray-400">Description</p><p className="text-gray-700">{expandedItem.description || '—'}</p></div>
+              {expandedItem.expense_type === 'WITHDRAWAL' && (
+                <div><p className="text-xs text-gray-400">Profit to</p><p className="text-gray-700">{expandedItem.recipient_user_id ? userName(expandedItem.recipient_user_id) : '—'}</p></div>
+              )}
               <div><p className="text-xs text-gray-400">Created by</p><p className="text-gray-700">{userName(expandedItem.created_by_user_id)}</p></div>
               {expandedItem.voided_at && <>
                 <div><p className="text-xs text-gray-400">Voided at</p><p className="text-red-600">{fmtDate(expandedItem.voided_at)}</p></div>
@@ -184,6 +204,7 @@ export default function Expenses() {
         loading={createMut.isPending}
         title="New Expense / Withdrawal"
         houseUsers={houseUsers}
+        recipientUsers={recipientUsers}
         currencies={currencies}
         wallets={wallets}
       />
@@ -196,6 +217,7 @@ export default function Expenses() {
           loading={correctMut.isPending}
           title={`Correct #${correctTarget.id}`}
           houseUsers={houseUsers}
+          recipientUsers={recipientUsers}
           currencies={currencies}
           wallets={wallets}
           defaultValues={correctTarget}
@@ -215,8 +237,8 @@ export default function Expenses() {
   )
 }
 
-function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers, currencies, wallets, defaultValues, isCorrection }: {
-  open: boolean; onClose: () => void; title: string; loading: boolean; houseUsers: UserRead[]; currencies: CurrencyRead[]
+function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers, recipientUsers, currencies, wallets, defaultValues, isCorrection }: {
+  open: boolean; onClose: () => void; title: string; loading: boolean; houseUsers: UserRead[]; recipientUsers: UserRead[]; currencies: CurrencyRead[]
   wallets: WalletRead[]
   onSubmit: (d: Record<string, unknown>) => void; defaultValues?: ExpenseRead; isCorrection?: boolean
 }) {
@@ -224,6 +246,7 @@ function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers,
   const [expenseType, setExpenseType] = useState<ExpenseType>(defaultValues?.expense_type ?? 'EXPENSE')
   const [currency, setCurrency] = useState(defaultValues?.currency_id ?? '')
   const [amount, setAmount] = useState(defaultValues?.amount ?? '')
+  const [recipientId, setRecipientId] = useState<number | null>(defaultValues?.recipient_user_id ?? null)
   const [description, setDescription] = useState(defaultValues?.description ?? '')
   const [createdAt, setCreatedAt] = useState(() => nowIstanbulISO())
   const [corrReason, setCorrReason] = useState('')
@@ -246,6 +269,10 @@ function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers,
     .map(currencyOption)
 
   const houseOpts = houseUsers.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username}` }))
+  const recipientOpts = [
+    { value: '', label: '— None —' },
+    ...recipientUsers.map(u => ({ value: u.id, label: `${u.name}${u.surname ? ' ' + u.surname : ''}`, sublabel: `@${u.username} · ${u.role}` })),
+  ]
 
   const submit = () => {
     if (!houseId) { setErr('House account is required'); return }
@@ -255,6 +282,7 @@ function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers,
     onSubmit({
       house_id: houseId, expense_type: expenseType, currency_id: currency,
       amount, description: description || null,
+      recipient_user_id: expenseType === 'WITHDRAWAL' ? recipientId : null,
       created_at: istanbulLocalToUTC(createdAt),
       ...(isCorrection ? { correction_reason: corrReason } : {}),
     })
@@ -278,7 +306,7 @@ function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers,
           <label className="text-sm font-medium text-gray-700">Type *</label>
           <div className="flex gap-2">
             {(['EXPENSE', 'WITHDRAWAL'] as const).map(t => (
-              <button key={t} type="button" onClick={() => setExpenseType(t)}
+              <button key={t} type="button" onClick={() => { setExpenseType(t); if (t === 'EXPENSE') setRecipientId(null) }}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${expenseType === t ? (t === 'EXPENSE' ? 'bg-red-500 text-white' : 'bg-purple-500 text-white') : 'bg-gray-100 text-gray-600'}`}>
                 {TYPE_META[t].label}
               </button>
@@ -288,6 +316,16 @@ function ExpenseFormModal({ open, onClose, onSubmit, loading, title, houseUsers,
             {expenseType === 'EXPENSE' ? 'Operating cost (rent, bills, etc.) leaving the system.' : 'Profit removed from the accounting.'}
           </p>
         </div>
+
+        {expenseType === 'WITHDRAWAL' && (
+          <SearchableSelect
+            label="Profit taken by"
+            options={recipientOpts}
+            value={recipientId}
+            onChange={v => setRecipientId(v === null || v === '' ? null : Number(v))}
+            placeholder="Select house / developer user (optional)..."
+          />
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SearchableSelect

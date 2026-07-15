@@ -196,6 +196,7 @@ export interface ExpenseRead {
   expense_type: ExpenseType
   currency_id: string
   amount: string
+  recipient_user_id: number | null
   description: string | null
   id: number
   created_at: string
@@ -211,6 +212,7 @@ export interface ExpenseCreate {
   expense_type: ExpenseType
   currency_id: string
   amount: string | number
+  recipient_user_id?: number | null
   description?: string | null
   created_at?: string | null
 }
@@ -220,6 +222,7 @@ export interface ExpenseCorrectionCreate {
   expense_type: ExpenseType
   currency_id: string
   amount: string | number
+  recipient_user_id?: number | null
   description?: string | null
   created_at?: string | null
   correction_reason: string
